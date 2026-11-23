@@ -39,9 +39,9 @@ export default function FacultyDutiesScreen({ navigation }) {
 
   if (loading) return <LoadingSpinner message="Loading Invigilation Portal..." />;
 
-  const facultyName = facultyInfo?.full_name || user?.faculty_profile?.full_name || "Dr. Ramesh Sharma";
-  const empId = facultyInfo?.employee_id || user?.faculty_profile?.employee_id || "EMP001";
-  const deptCode = facultyInfo?.department_code || user?.faculty_profile?.department_code || "CSE";
+  const facultyName = facultyInfo?.full_name || user?.faculty_profile?.full_name || user?.username || "Faculty Member";
+  const empId = facultyInfo?.employee_id || user?.faculty_profile?.employee_id || user?.username || "";
+  const deptCode = facultyInfo?.department_code || user?.faculty_profile?.department_code || "Faculty";
 
   return (
     <View style={styles.container}>
@@ -58,7 +58,7 @@ export default function FacultyDutiesScreen({ navigation }) {
           </View>
           <Text style={styles.facultyName}>{facultyName}</Text>
           <Text style={styles.facultyMeta}>
-            Faculty Employee ID: {empId} • Dept: {deptCode}
+            Faculty ID: {empId} {deptCode ? `• Dept: ${deptCode}` : ""}
           </Text>
         </View>
 
@@ -66,7 +66,7 @@ export default function FacultyDutiesScreen({ navigation }) {
         <View style={styles.dutiesHeaderRow}>
           <Text style={styles.dutiesHeading}>Assigned Invigilation Duties</Text>
           <View style={styles.dutiesCountBadge}>
-            <Text style={styles.dutiesCountText}>{duties.length || 1} DUTIES</Text>
+            <Text style={styles.dutiesCountText}>{duties.length} DUTIES</Text>
           </View>
         </View>
 
@@ -74,23 +74,23 @@ export default function FacultyDutiesScreen({ navigation }) {
           duties.map((item, idx) => (
             <View key={item.id || idx} style={styles.dutyCard}>
               <View style={styles.dutyTopRow}>
-                <Text style={styles.dutyCode}>{item.subject_code || "21CS51"}-DBMS</Text>
+                <Text style={styles.dutyCode}>{item.subject_code || "EXAM"}</Text>
                 <View style={styles.assignedBadge}>
                   <Text style={styles.assignedBadgeText}>{item.status || "ASSIGNED"}</Text>
                 </View>
               </View>
 
-              <Text style={styles.dutyExamName}>{item.exam_name || "Database Management Systems"}</Text>
+              <Text style={styles.dutyExamName}>{item.exam_name || "Examination"}</Text>
 
               <View style={styles.dutyInfoRow}>
                 <Ionicons name="calendar-outline" size={17} color="#0f172a" style={{ marginRight: 8 }} />
-                <Text style={styles.dutyInfoText}>Date: {item.duty_date || "2026-11-04"}</Text>
+                <Text style={styles.dutyInfoText}>Date: {item.duty_date}</Text>
               </View>
 
               <View style={styles.dutyInfoRow}>
                 <Ionicons name="time-outline" size={17} color="#0f172a" style={{ marginRight: 8 }} />
                 <Text style={styles.dutyInfoText}>
-                  Timing: {item.start_time || "10:00"} - {item.end_time || "13:00"}
+                  Timing: {item.start_time?.slice(0, 5)} - {item.end_time?.slice(0, 5)}
                 </Text>
               </View>
 
@@ -99,41 +99,36 @@ export default function FacultyDutiesScreen({ navigation }) {
                 <Ionicons name="business-outline" size={24} color="#64748b" style={{ marginRight: 10 }} />
                 <View style={{ flex: 1 }}>
                   <Text style={styles.supervisingLabel}>Supervising Hall:</Text>
-                  <Text style={styles.supervisingVal}>
-                    {item.hall_name || "LH-101"} ({item.building || "Aryabhata Block"}, Floor: 1st Floor)
-                  </Text>
+                  <Text style={styles.supervisingHallName}>{item.hall_name || "TBA"}</Text>
+                  {item.building ? (
+                    <Text style={styles.supervisingHallSub}>Building: {item.building}</Text>
+                  ) : null}
+                  {item.hall_capacity ? (
+                    <Text style={styles.supervisingHallSub}>
+                      Capacity: {item.hall_capacity} seats {item.allocated_students_count ? `• ${item.allocated_students_count} Students Allocated` : ""}
+                    </Text>
+                  ) : null}
                 </View>
               </View>
+
+              {item.seating_plan_id ? (
+                <Pressable
+                  style={styles.viewSeatingBtn}
+                  onPress={() => navigation.navigate("SeatingPlanDetail", { planId: item.seating_plan_id })}
+                >
+                  <Ionicons name="layers-outline" size={16} color="#1d4ed8" style={{ marginRight: 6 }} />
+                  <Text style={styles.viewSeatingBtnText}>View Hall Seating Arrangement</Text>
+                </Pressable>
+              ) : null}
             </View>
           ))
         ) : (
-          <View style={styles.dutyCard}>
-            <View style={styles.dutyTopRow}>
-              <Text style={styles.dutyCode}>21CS51-DBMS</Text>
-              <View style={styles.assignedBadge}>
-                <Text style={styles.assignedBadgeText}>ASSIGNED</Text>
-              </View>
-            </View>
-
-            <Text style={styles.dutyExamName}>Database Management Systems</Text>
-
-            <View style={styles.dutyInfoRow}>
-              <Ionicons name="calendar-outline" size={17} color="#0f172a" style={{ marginRight: 8 }} />
-              <Text style={styles.dutyInfoText}>Date: 2026-11-04</Text>
-            </View>
-
-            <View style={styles.dutyInfoRow}>
-              <Ionicons name="time-outline" size={17} color="#0f172a" style={{ marginRight: 8 }} />
-              <Text style={styles.dutyInfoText}>Timing: 10:00 - 13:00</Text>
-            </View>
-
-            <View style={styles.supervisingBox}>
-              <Ionicons name="business-outline" size={24} color="#64748b" style={{ marginRight: 10 }} />
-              <View style={{ flex: 1 }}>
-                <Text style={styles.supervisingLabel}>Supervising Hall:</Text>
-                <Text style={styles.supervisingVal}>LH-101 (Aryabhata Block, Floor: 1st Floor)</Text>
-              </View>
-            </View>
+          <View style={styles.emptyCard}>
+            <Ionicons name="clipboard-outline" size={44} color="#94a3b8" />
+            <Text style={styles.emptyTitle}>No Duties Assigned</Text>
+            <Text style={styles.emptySub}>
+              You currently have no invigilation duties scheduled. Any exam duties assigned by the Exam Cell will appear here.
+            </Text>
           </View>
         )}
 
@@ -263,11 +258,60 @@ const styles = StyleSheet.create({
     color: "#64748b",
     fontWeight: "600",
   },
+  supervisingHallName: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: "#0f172a",
+    marginTop: 2,
+  },
+  supervisingHallSub: {
+    fontSize: 11,
+    color: "#64748b",
+    marginTop: 1,
+  },
   supervisingVal: {
     fontSize: 13,
     fontWeight: "700",
     color: "#0f172a",
     marginTop: 2,
+  },
+  viewSeatingBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#eff6ff",
+    borderWidth: 1,
+    borderColor: "#bfdbfe",
+    borderRadius: 8,
+    paddingVertical: 9,
+    marginTop: 10,
+  },
+  viewSeatingBtnText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#1d4ed8",
+  },
+  emptyCard: {
+    backgroundColor: "#ffffff",
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+    padding: 32,
+    alignItems: "center",
+    marginTop: 12,
+  },
+  emptyTitle: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: "#0f172a",
+    marginTop: 12,
+  },
+  emptySub: {
+    fontSize: 12,
+    color: "#64748b",
+    textAlign: "center",
+    marginTop: 6,
+    lineHeight: 18,
   },
   signOutBtn: {
     backgroundColor: "#ef4444",

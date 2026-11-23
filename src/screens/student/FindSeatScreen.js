@@ -93,7 +93,7 @@ export default function FindSeatScreen({ navigation }) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
-  scroll: { padding: 16 },
+  scroll: { padding: 16, maxWidth: 680, width: "100%", alignSelf: "center" },
   searchBox: { backgroundColor: colors.surface, padding: 16, borderRadius: 14, elevation: 2, marginBottom: 16 },
   inputLabel: { fontSize: 13, fontWeight: "700", color: colors.text, marginBottom: 8 },
   inputRow: { flexDirection: "row", gap: 10 },

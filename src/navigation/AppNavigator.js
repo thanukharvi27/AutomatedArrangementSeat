@@ -134,24 +134,27 @@ export const AppNavigator = () => {
             <Stack.Screen name="Register" component={RegisterScreen} />
             <Stack.Screen name="PublicFindSeat" component={FindSeatScreen} />
           </>
-        ) : user.role === "ADMIN" || user.role === "admin" ? (
+        ) : (user.role || "").toUpperCase() === "ADMIN" ? (
           <>
             <Stack.Screen name="AdminRoot" component={AdminTabs} />
             <Stack.Screen name="StudentManagement" component={StudentManagementScreen} />
             <Stack.Screen name="ExamManagement" component={ExamManagementScreen} />
             <Stack.Screen name="HallManagement" component={HallManagementScreen} />
             <Stack.Screen name="FacultyManagement" component={FacultyManagementScreen} />
+            <Stack.Screen name="SeatingPlans" component={SeatingGeneratorScreen} />
             <Stack.Screen name="SeatingPlanDetail" component={SeatingPlanDetailScreen} />
             <Stack.Screen name="PublicFindSeat" component={FindSeatScreen} />
           </>
-        ) : user.role === "FACULTY" || user.role === "faculty" ? (
+        ) : (user.role || "").toUpperCase() === "FACULTY" ? (
           <>
             <Stack.Screen name="FacultyRoot" component={FacultyTabs} />
             <Stack.Screen name="SeatingPlanDetail" component={SeatingPlanDetailScreen} />
+            <Stack.Screen name="PublicFindSeat" component={FindSeatScreen} />
           </>
         ) : (
           <>
             <Stack.Screen name="StudentRoot" component={StudentTabs} />
+            <Stack.Screen name="PublicFindSeat" component={FindSeatScreen} />
           </>
         )}
       </Stack.Navigator>

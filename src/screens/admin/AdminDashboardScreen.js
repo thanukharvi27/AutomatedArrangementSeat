@@ -21,17 +21,19 @@ export default function AdminDashboardScreen({ navigation }) {
 
   const fetchStats = async () => {
     try {
-      const [plansRes, studentsRes, hallsRes, examsRes] = await Promise.allSettled([
+      const [plansRes, studentsRes, hallsRes, examsRes, facultyRes] = await Promise.allSettled([
         api.get("/seating-plans"),
         api.get("/students?per_page=1"),
         api.get("/halls"),
         api.get("/exams"),
+        api.get("/faculty"),
       ]);
 
       const plans = (plansRes.status === "fulfilled" && plansRes.value.data?.plans) || [];
       const studentsTotal = (studentsRes.status === "fulfilled" && studentsRes.value.data?.total) || 36;
       const halls = (hallsRes.status === "fulfilled" && hallsRes.value.data?.halls) || [];
       const exams = (examsRes.status === "fulfilled" && examsRes.value.data?.exams) || [];
+      const facultyList = (facultyRes.status === "fulfilled" && facultyRes.value.data?.faculty) || [];
 
       const totalSeats = halls.reduce((acc, h) => acc + (h.capacity || 0), 0) || 126;
       const publishedCount = plans.filter((p) => p.status === "PUBLISHED").length || 1;
@@ -41,6 +43,7 @@ export default function AdminDashboardScreen({ navigation }) {
         total_students: studentsTotal,
         total_exams: exams.length || 3,
         total_halls: halls.length || 4,
+        total_faculty: facultyList.length || 5,
         total_seats: totalSeats,
         allocated_seats: 36,
         published_plans: publishedCount,
@@ -79,7 +82,10 @@ export default function AdminDashboardScreen({ navigation }) {
         {/* 2x2 Grid Stat Cards */}
         <View style={styles.grid}>
           {/* Total Students */}
-          <View style={styles.statCard}>
+          <Pressable
+            style={styles.statCard}
+            onPress={() => navigation.navigate("Management")}
+          >
             <View style={styles.statCardTop}>
               <Text style={styles.statLabel}>Total Students</Text>
               <View style={[styles.iconCircle, { backgroundColor: "#eff6ff" }]}>
@@ -88,10 +94,13 @@ export default function AdminDashboardScreen({ navigation }) {
             </View>
             <Text style={[styles.statValue, { color: "#2563eb" }]}>{stats.total_students}</Text>
             <Text style={styles.statSub}>Active enrolled</Text>
-          </View>
+          </Pressable>
 
           {/* Total Exams */}
-          <View style={styles.statCard}>
+          <Pressable
+            style={styles.statCard}
+            onPress={() => navigation.navigate("ExamManagement")}
+          >
             <View style={styles.statCardTop}>
               <Text style={styles.statLabel}>Total Exams</Text>
               <View style={[styles.iconCircle, { backgroundColor: "#f0fdf4" }]}>
@@ -100,10 +109,13 @@ export default function AdminDashboardScreen({ navigation }) {
             </View>
             <Text style={[styles.statValue, { color: "#16a34a" }]}>{stats.total_exams}</Text>
             <Text style={styles.statSub}>{stats.total_exams} Upcoming</Text>
-          </View>
+          </Pressable>
 
           {/* Exam Halls */}
-          <View style={styles.statCard}>
+          <Pressable
+            style={styles.statCard}
+            onPress={() => navigation.navigate("HallManagement")}
+          >
             <View style={styles.statCardTop}>
               <Text style={styles.statLabel}>Exam Halls</Text>
               <View style={[styles.iconCircle, { backgroundColor: "#fff7ed" }]}>
@@ -111,8 +123,8 @@ export default function AdminDashboardScreen({ navigation }) {
               </View>
             </View>
             <Text style={[styles.statValue, { color: "#ea580c" }]}>{stats.total_halls}</Text>
-            <Text style={styles.statSub}>Configured blocks</Text>
-          </View>
+            <Text style={styles.statSub}>Tap to manage rooms</Text>
+          </Pressable>
 
           {/* Total Seats */}
           <View style={styles.statCard}>
@@ -165,7 +177,17 @@ export default function AdminDashboardScreen({ navigation }) {
             <View style={[styles.actionIconCircle, { backgroundColor: "#eff6ff" }]}>
               <Ionicons name="layers" size={22} color="#2563eb" />
             </View>
-            <Text style={styles.actionLabel}>Generate Seating</Text>
+            <Text style={styles.actionLabel}>Seating Plan</Text>
+          </Pressable>
+
+          <Pressable
+            style={styles.actionBtn}
+            onPress={() => navigation.navigate("FacultyManagement")}
+          >
+            <View style={[styles.actionIconCircle, { backgroundColor: "#ede9fe" }]}>
+              <Ionicons name="people" size={22} color="#7c3aed" />
+            </View>
+            <Text style={styles.actionLabel}>Faculty & Duties</Text>
           </Pressable>
 
           <Pressable
@@ -185,17 +207,7 @@ export default function AdminDashboardScreen({ navigation }) {
             <View style={[styles.actionIconCircle, { backgroundColor: "#fefce8" }]}>
               <Ionicons name="person-add" size={22} color="#ca8a04" />
             </View>
-            <Text style={styles.actionLabel}>Add Student</Text>
-          </Pressable>
-
-          <Pressable
-            style={styles.actionBtn}
-            onPress={() => navigation.navigate("AdminReports")}
-          >
-            <View style={[styles.actionIconCircle, { backgroundColor: "#faf5ff" }]}>
-              <Ionicons name="bar-chart" size={22} color="#9333ea" />
-            </View>
-            <Text style={styles.actionLabel}>Reports</Text>
+            <Text style={styles.actionLabel}>Students</Text>
           </Pressable>
         </View>
 

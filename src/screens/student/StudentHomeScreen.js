@@ -36,8 +36,8 @@ export default function StudentHomeScreen({ navigation }) {
 
   if (loading) return <LoadingSpinner message="Loading your examination schedule..." />;
 
-  const displayName = studentDetails?.full_name || user?.full_name || "Aarav Patel";
-  const displayUsn = studentDetails?.usn || user?.student_profile?.usn || user?.username || "1MS22CS001";
+  const displayName = studentDetails?.full_name || user?.student_profile?.full_name || user?.username || "Student";
+  const displayUsn = studentDetails?.usn || user?.student_profile?.usn || user?.username || "";
 
   return (
     <View style={styles.container}>

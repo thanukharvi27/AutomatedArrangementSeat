@@ -39,15 +39,16 @@ export default function StudentExamsScreen() {
         contentContainerStyle={styles.list}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); fetchExams(); }} />}
         ListEmptyComponent={<EmptyState icon="📝" title="No Exams" message="You have no registered examinations." />}
-        renderItem={({ item, index }) => {
-          const isPublished = item.has_seating || item.is_published || index === 0;
+        renderItem={({ item }) => {
+          const hasSeat = Boolean(item.has_seating && item.seat_label && item.seat_label !== "TBA");
+          const isPublished = Boolean(item.is_published);
           return (
             <View style={styles.examListCard}>
               <View style={styles.examCardTop}>
-                <Text style={styles.examCardCode}>{item.course_code || item.subject_code || "21CS51-DBMS"}</Text>
-                <View style={[styles.statusBadge, { backgroundColor: isPublished ? "#dcfce7" : "#fef9c3" }]}>
-                  <Text style={[styles.statusBadgeText, { color: isPublished ? "#15803d" : "#a16207" }]}>
-                    {isPublished ? "PUBLISHED" : "PENDING"}
+                <Text style={styles.examCardCode}>{item.course_code || item.subject_code}</Text>
+                <View style={[styles.statusBadge, { backgroundColor: hasSeat ? "#dcfce7" : "#fef9c3" }]}>
+                  <Text style={[styles.statusBadgeText, { color: hasSeat ? "#15803d" : "#a16207" }]}>
+                    {hasSeat ? "SEAT ALLOCATED" : isPublished ? "PUBLISHED" : "SCHEDULED"}
                   </Text>
                 </View>
               </View>
@@ -56,8 +57,8 @@ export default function StudentExamsScreen() {
                 <Text style={styles.examCardDateTime}>
                   {item.exam_date} • {item.start_time?.slice(0, 5) || "10:00"}
                 </Text>
-                <Text style={[styles.examCardSeatText, { color: isPublished ? "#475569" : "#64748b" }]}>
-                  {isPublished ? `${item.hall_code || "LH-101"} - Seat ${item.seat_label || "A1"}` : "Seating Not Published"}
+                <Text style={[styles.examCardSeatText, { color: hasSeat ? "#15803d" : "#64748b", fontWeight: hasSeat ? "700" : "500" }]}>
+                  {hasSeat ? `Hall ${item.hall_code} • Seat ${item.seat_label}` : "Seating Allocation Pending"}
                 </Text>
               </View>
             </View>

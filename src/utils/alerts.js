@@ -1,29 +1,25 @@
-import { Alert, Platform } from "react-native";
+import { Alert } from "react-native";
 
 export const confirmSignOut = (logoutFn) => {
-  if (Platform.OS === "web") {
-    if (typeof window !== "undefined" && window.confirm) {
-      if (window.confirm("Are you sure you want to sign out?")) {
-        logoutFn();
-      }
-    } else {
-      logoutFn();
-    }
-  } else {
-    Alert.alert("Sign Out", "Are you sure you want to sign out?", [
+  Alert.alert(
+    "Sign Out",
+    "Are you sure you want to sign out of ExamEase?",
+    [
       { text: "Cancel", style: "cancel" },
-      { text: "Sign Out", style: "destructive", onPress: logoutFn },
-    ]);
-  }
+      {
+        text: "Sign Out",
+        style: "destructive",
+        onPress: () => {
+          if (logoutFn) logoutFn();
+        },
+      },
+    ],
+    { cancelable: true }
+  );
 };
 
 export const showAlert = (title, message) => {
-  if (Platform.OS === "web") {
-    if (typeof window !== "undefined" && window.alert) {
-      window.alert(`${title ? `${title}\n\n` : ""}${message || ""}`);
-      return;
-    }
-  }
-  Alert.alert(title || "Notice", message || "");
+  Alert.alert(title || "Notice", message || "", [{ text: "OK" }], {
+    cancelable: true,
+  });
 };
-
