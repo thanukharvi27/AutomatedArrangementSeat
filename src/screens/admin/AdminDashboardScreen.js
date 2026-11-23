@@ -1,58 +1,85 @@
 import React, { useState, useEffect } from "react";
-import { View, Text, StyleSheet, ScrollView, RefreshControl, Pressable } from "react-native";
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  RefreshControl,
+  Pressable,
+  useWindowDimensions,
+} from "react-native";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
-import { Header } from "../../components/Header";
+import { ResponsiveLayout } from "../../components/ResponsiveLayout";
+import { StatCard } from "../../components/StatCard";
+import { Badge } from "../../components/Badge";
 import { LoadingSpinner } from "../../components/LoadingSpinner";
-import api from "../../services/api";
+import { colors, typography, shadows } from "../../theme/colors";
+import api, { reportApi } from "../../services/api";
 
 export default function AdminDashboardScreen({ navigation }) {
+  const { width } = useWindowDimensions();
+  const isDesktop = width >= 900;
+
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [stats, setStats] = useState({
     total_students: 36,
+    active_students: 36,
     total_exams: 3,
+    upcoming_exams: 3,
     total_halls: 4,
+    total_faculty: 5,
     total_seats: 126,
     allocated_seats: 36,
     published_plans: 1,
     draft_plans: 0,
   });
   const [recentExams, setRecentExams] = useState([]);
+  const [recentActivities, setRecentActivities] = useState([]);
 
-  const fetchStats = async () => {
+  const fetchDashboardData = async () => {
     try {
-      const [plansRes, studentsRes, hallsRes, examsRes, facultyRes] = await Promise.allSettled([
+      const [reportRes, plansRes, hallsRes] = await Promise.allSettled([
+        reportApi.getDashboard(),
         api.get("/seating-plans"),
-        api.get("/students?per_page=1"),
         api.get("/halls"),
-        api.get("/exams"),
-        api.get("/faculty"),
       ]);
 
-      const plans = (plansRes.status === "fulfilled" && plansRes.value.data?.plans) || [];
-      const studentsTotal = (studentsRes.status === "fulfilled" && studentsRes.value.data?.total) || 36;
-      const halls = (hallsRes.status === "fulfilled" && hallsRes.value.data?.halls) || [];
-      const exams = (examsRes.status === "fulfilled" && examsRes.value.data?.exams) || [];
-      const facultyList = (facultyRes.status === "fulfilled" && facultyRes.value.data?.faculty) || [];
+      let statsObj = { ...stats };
 
-      const totalSeats = halls.reduce((acc, h) => acc + (h.capacity || 0), 0) || 126;
-      const publishedCount = plans.filter((p) => p.status === "PUBLISHED").length || 1;
-      const draftCount = plans.filter((p) => p.status === "DRAFT").length || 0;
+      if (reportRes.status === "fulfilled") {
+        const rData = reportRes.value.data || reportRes.value;
+        if (rData.statistics) {
+          statsObj = {
+            ...statsObj,
+            ...rData.statistics,
+          };
+        }
+        if (rData.recent_exams) {
+          setRecentExams(rData.recent_exams.slice(0, 4));
+        }
+        if (rData.recent_activities) {
+          setRecentActivities(rData.recent_activities.slice(0, 5));
+        }
+      }
 
-      setStats({
-        total_students: studentsTotal,
-        total_exams: exams.length || 3,
-        total_halls: halls.length || 4,
-        total_faculty: facultyList.length || 5,
-        total_seats: totalSeats,
-        allocated_seats: 36,
-        published_plans: publishedCount,
-        draft_plans: draftCount,
-      });
+      if (plansRes.status === "fulfilled") {
+        const pData = plansRes.value.data || plansRes.value;
+        const plans = pData.plans || [];
+        statsObj.published_plans = plans.filter((p) => p.status === "PUBLISHED").length;
+        statsObj.draft_plans = plans.filter((p) => p.status === "DRAFT").length;
+      }
 
-      setRecentExams(exams.slice(0, 3));
+      if (hallsRes.status === "fulfilled") {
+        const hData = hallsRes.value.data || hallsRes.value;
+        const halls = hData.halls || [];
+        const totalCap = halls.reduce((acc, h) => acc + (h.capacity || 0), 0);
+        if (totalCap > 0) statsObj.total_seats = totalCap;
+      }
+
+      setStats(statsObj);
     } catch (err) {
-      console.log("Error loading dashboard stats:", err?.message);
+      console.log("Error loading admin dashboard:", err?.message);
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -60,375 +87,571 @@ export default function AdminDashboardScreen({ navigation }) {
   };
 
   useEffect(() => {
-    fetchStats();
+    fetchDashboardData();
   }, []);
 
-  if (loading) return <LoadingSpinner message="Loading Admin Dashboard..." />;
+  if (loading) return <LoadingSpinner message="Loading ExamEase Control Center..." />;
+
+  const occupancyRate = stats.total_seats > 0
+    ? Math.min(100, Math.round((stats.allocated_seats / stats.total_seats) * 100))
+    : 0;
 
   return (
-    <View style={styles.container}>
-      <Header title="ExamEase Dashboard" />
-
+    <ResponsiveLayout
+      title="Control Center"
+      subtitle="Campus exam operations & seat allocation monitor"
+      currentRouteName="AdminDashboard"
+    >
       <ScrollView
-        contentContainerStyle={styles.scroll}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); fetchStats(); }} />}
+        contentContainerStyle={[
+          styles.scroll,
+          isDesktop && styles.scrollDesktop,
+        ]}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => {
+              setRefreshing(true);
+              fetchDashboardData();
+            }}
+          />
+        }
       >
-        {/* Title Section */}
-        <View style={styles.headerBlock}>
-          <Text style={styles.mainTitle}>Administrator Control Center</Text>
-          <Text style={styles.mainSub}>Real-time exam seat allocation & hall management</Text>
-        </View>
-
-        {/* 2x2 Grid Stat Cards */}
-        <View style={styles.grid}>
-          {/* Total Students */}
-          <Pressable
-            style={styles.statCard}
-            onPress={() => navigation.navigate("Management")}
-          >
-            <View style={styles.statCardTop}>
-              <Text style={styles.statLabel}>Total Students</Text>
-              <View style={[styles.iconCircle, { backgroundColor: "#eff6ff" }]}>
-                <Ionicons name="people" size={17} color="#2563eb" />
-              </View>
-            </View>
-            <Text style={[styles.statValue, { color: "#2563eb" }]}>{stats.total_students}</Text>
-            <Text style={styles.statSub}>Active enrolled</Text>
-          </Pressable>
-
-          {/* Total Exams */}
-          <Pressable
-            style={styles.statCard}
-            onPress={() => navigation.navigate("ExamManagement")}
-          >
-            <View style={styles.statCardTop}>
-              <Text style={styles.statLabel}>Total Exams</Text>
-              <View style={[styles.iconCircle, { backgroundColor: "#f0fdf4" }]}>
-                <Ionicons name="calendar" size={17} color="#16a34a" />
-              </View>
-            </View>
-            <Text style={[styles.statValue, { color: "#16a34a" }]}>{stats.total_exams}</Text>
-            <Text style={styles.statSub}>{stats.total_exams} Upcoming</Text>
-          </Pressable>
-
-          {/* Exam Halls */}
-          <Pressable
-            style={styles.statCard}
-            onPress={() => navigation.navigate("HallManagement")}
-          >
-            <View style={styles.statCardTop}>
-              <Text style={styles.statLabel}>Exam Halls</Text>
-              <View style={[styles.iconCircle, { backgroundColor: "#fff7ed" }]}>
-                <Ionicons name="business" size={17} color="#ea580c" />
-              </View>
-            </View>
-            <Text style={[styles.statValue, { color: "#ea580c" }]}>{stats.total_halls}</Text>
-            <Text style={styles.statSub}>Tap to manage rooms</Text>
-          </Pressable>
-
-          {/* Total Seats */}
-          <View style={styles.statCard}>
-            <View style={styles.statCardTop}>
-              <Text style={styles.statLabel}>Total Seats</Text>
-              <View style={[styles.iconCircle, { backgroundColor: "#faf5ff" }]}>
-                <MaterialCommunityIcons name="seat" size={17} color="#9333ea" />
-              </View>
-            </View>
-            <Text style={[styles.statValue, { color: "#9333ea" }]}>{stats.total_seats}</Text>
-            <Text style={styles.statSub}>{stats.allocated_seats} Allocated</Text>
+        {/* Top Hero Banner */}
+        <View style={styles.heroBanner}>
+          <View style={styles.heroTextCol}>
+            <Text style={styles.heroTitle}>Examination Command Center</Text>
+            <Text style={styles.heroSub}>
+              Real-time monitoring of seating arrangements, hall capacities, and invigilation duties.
+            </Text>
           </View>
-        </View>
-
-        {/* Seating Plans Status Card */}
-        <View style={styles.seatingStatusCard}>
-          <Text style={styles.seatingStatusTitle}>Seating Plans Status</Text>
-          <View style={styles.seatingStatusRow}>
-            <View style={styles.statusCol}>
-              <View style={styles.statusColInner}>
-                <Ionicons name="checkmark-circle-outline" size={26} color="#16a34a" style={{ marginRight: 8 }} />
-                <View>
-                  <Text style={styles.statusCount}>{stats.published_plans}</Text>
-                  <Text style={styles.statusSub}>Published</Text>
-                </View>
-              </View>
-            </View>
-
-            <View style={styles.vDivider} />
-
-            <View style={styles.statusCol}>
-              <View style={styles.statusColInner}>
-                <Ionicons name="layers-outline" size={26} color="#ea580c" style={{ marginRight: 8 }} />
-                <View>
-                  <Text style={styles.statusCount}>{stats.draft_plans}</Text>
-                  <Text style={styles.statusSub}>Drafts Pending</Text>
-                </View>
-              </View>
-            </View>
-          </View>
-        </View>
-
-        {/* Quick Actions */}
-        <Text style={styles.sectionHeading}>Quick Actions</Text>
-        <View style={styles.quickActionRow}>
           <Pressable
-            style={styles.actionBtn}
+            style={styles.heroActionBtn}
             onPress={() => navigation.navigate("SeatingPlans")}
           >
-            <View style={[styles.actionIconCircle, { backgroundColor: "#eff6ff" }]}>
-              <Ionicons name="layers" size={22} color="#2563eb" />
-            </View>
-            <Text style={styles.actionLabel}>Seating Plan</Text>
+            <Ionicons name="sparkles" size={16} color="#FFFFFF" style={{ marginRight: 6 }} />
+            <Text style={styles.heroActionBtnText}>Generate Seating</Text>
           </Pressable>
+        </View>
 
+        {/* KPI Stat Cards Grid */}
+        <View style={styles.kpiGrid}>
           <Pressable
-            style={styles.actionBtn}
-            onPress={() => navigation.navigate("FacultyManagement")}
-          >
-            <View style={[styles.actionIconCircle, { backgroundColor: "#ede9fe" }]}>
-              <Ionicons name="people" size={22} color="#7c3aed" />
-            </View>
-            <Text style={styles.actionLabel}>Faculty & Duties</Text>
-          </Pressable>
-
-          <Pressable
-            style={styles.actionBtn}
-            onPress={() => navigation.navigate("ExamManagement")}
-          >
-            <View style={[styles.actionIconCircle, { backgroundColor: "#f0fdf4" }]}>
-              <Ionicons name="calendar" size={22} color="#16a34a" />
-            </View>
-            <Text style={styles.actionLabel}>Add Exam</Text>
-          </Pressable>
-
-          <Pressable
-            style={styles.actionBtn}
+            style={styles.kpiCardWrap}
             onPress={() => navigation.navigate("StudentManagement")}
           >
-            <View style={[styles.actionIconCircle, { backgroundColor: "#fefce8" }]}>
-              <Ionicons name="person-add" size={22} color="#ca8a04" />
+            <StatCard
+              title="Students"
+              value={stats.total_students}
+              subtitle={`${stats.active_students || stats.total_students} enrolled candidates`}
+              iconName="people-outline"
+              iconColor={colors.primary}
+              badgeText="Active"
+              badgeVariant="info"
+            />
+          </Pressable>
+
+          <Pressable
+            style={styles.kpiCardWrap}
+            onPress={() => navigation.navigate("ExamManagement")}
+          >
+            <StatCard
+              title="Exams Scheduled"
+              value={stats.total_exams}
+              subtitle={`${stats.upcoming_exams || stats.total_exams} upcoming sessions`}
+              iconName="calendar-outline"
+              iconColor={colors.success}
+              badgeText="Scheduled"
+              badgeVariant="success"
+            />
+          </Pressable>
+
+          <Pressable
+            style={styles.kpiCardWrap}
+            onPress={() => navigation.navigate("HallManagement")}
+          >
+            <StatCard
+              title="Exam Halls"
+              value={stats.total_halls}
+              subtitle={`${stats.total_seats} total seat capacity`}
+              iconName="business-outline"
+              iconColor="#EA580C"
+              badgeText="Rooms"
+              badgeVariant="warning"
+            />
+          </Pressable>
+
+          <Pressable
+            style={styles.kpiCardWrap}
+            onPress={() => navigation.navigate("FacultyManagement")}
+          >
+            <StatCard
+              title="Invigilators"
+              value={stats.total_faculty || 5}
+              subtitle="Registered faculty roster"
+              iconName="briefcase-outline"
+              iconColor="#7C3AED"
+              badgeText="Faculty"
+              badgeVariant="info"
+            />
+          </Pressable>
+        </View>
+
+        {/* Middle Section: Capacity Bar & Seating Plans Status */}
+        <View style={[styles.middleRow, isDesktop && styles.middleRowDesktop]}>
+          {/* Capacity Utilization Card */}
+          <View style={styles.sectionCard}>
+            <View style={styles.sectionCardHeader}>
+              <View>
+                <Text style={styles.cardHeaderTitle}>Hall Capacity Utilization</Text>
+                <Text style={styles.cardHeaderSub}>Overall seats filled vs available</Text>
+              </View>
+              <Badge
+                label={`${occupancyRate}% Occupied`}
+                variant={occupancyRate > 80 ? "warning" : "success"}
+              />
             </View>
-            <Text style={styles.actionLabel}>Students</Text>
-          </Pressable>
-        </View>
 
-        {/* Recent Examinations */}
-        <View style={styles.recentExamsHeader}>
-          <Text style={styles.sectionHeading}>Recent Examinations</Text>
-          <Pressable onPress={() => navigation.navigate("ExamManagement")}>
-            <Text style={styles.viewAllText}>View All</Text>
-          </Pressable>
-        </View>
+            {/* Progress Bar */}
+            <View style={styles.progressTrack}>
+              <View style={[styles.progressBar, { width: `${occupancyRate}%` }]} />
+            </View>
 
-        <View style={styles.recentExamCard}>
-          <View style={styles.recentExamTop}>
-            <Text style={styles.recentExamCode}>21EC53-DSP</Text>
-            <View style={styles.scheduledBadge}>
-              <Text style={styles.scheduledBadgeText}>SCHEDULED</Text>
+            <View style={styles.statBreakdownRow}>
+              <View style={styles.statMiniCol}>
+                <Text style={styles.statMiniVal}>{stats.allocated_seats}</Text>
+                <Text style={styles.statMiniLabel}>Allocated</Text>
+              </View>
+              <View style={styles.statDivider} />
+              <View style={styles.statMiniCol}>
+                <Text style={styles.statMiniVal}>{Math.max(0, stats.total_seats - stats.allocated_seats)}</Text>
+                <Text style={styles.statMiniLabel}>Available</Text>
+              </View>
+              <View style={styles.statDivider} />
+              <View style={styles.statMiniCol}>
+                <Text style={styles.statMiniVal}>{stats.total_seats}</Text>
+                <Text style={styles.statMiniLabel}>Total Capacity</Text>
+              </View>
             </View>
           </View>
-          <Text style={styles.recentExamTitle}>Digital Signal Processing</Text>
-          <Text style={styles.recentExamSub}>2026-11-05 • 09:30 - 12:30 • 5th Semester</Text>
+
+          {/* Seating Plans Status Card */}
+          <View style={styles.sectionCard}>
+            <View style={styles.sectionCardHeader}>
+              <View>
+                <Text style={styles.cardHeaderTitle}>Seating Plans Status</Text>
+                <Text style={styles.cardHeaderSub}>Drafts vs Published arrangements</Text>
+              </View>
+              <Pressable onPress={() => navigation.navigate("SeatingPlans")}>
+                <Text style={styles.linkText}>View Plans →</Text>
+              </Pressable>
+            </View>
+
+            <View style={styles.plansStatusRow}>
+              <View style={styles.planStatusBox}>
+                <Ionicons name="checkmark-circle-outline" size={24} color={colors.success} style={{ marginRight: 8 }} />
+                <View>
+                  <Text style={styles.planStatusCount}>{stats.published_plans}</Text>
+                  <Text style={styles.planStatusLabel}>Published Live</Text>
+                </View>
+              </View>
+
+              <View style={styles.statDivider} />
+
+              <View style={styles.planStatusBox}>
+                <Ionicons name="document-text-outline" size={24} color={colors.warning} style={{ marginRight: 8 }} />
+                <View>
+                  <Text style={styles.planStatusCount}>{stats.draft_plans}</Text>
+                  <Text style={styles.planStatusLabel}>Drafts Pending</Text>
+                </View>
+              </View>
+            </View>
+          </View>
+        </View>
+
+        {/* Quick Actions Strip */}
+        <Text style={styles.sectionHeading}>Quick Management Actions</Text>
+        <View style={styles.quickActionsGrid}>
+          <Pressable
+            style={styles.actionTile}
+            onPress={() => navigation.navigate("SeatingPlans")}
+          >
+            <View style={[styles.actionIconBox, { backgroundColor: colors.primaryLight }]}>
+              <Ionicons name="layers" size={20} color={colors.primary} />
+            </View>
+            <Text style={styles.actionTileTitle}>Auto Seating</Text>
+            <Text style={styles.actionTileSub}>Generate allocation</Text>
+          </Pressable>
+
+          <Pressable
+            style={styles.actionTile}
+            onPress={() => navigation.navigate("FacultyManagement")}
+          >
+            <View style={[styles.actionIconBox, { backgroundColor: "#EDE9FE" }]}>
+              <Ionicons name="briefcase" size={20} color="#7C3AED" />
+            </View>
+            <Text style={styles.actionTileTitle}>Invigilation</Text>
+            <Text style={styles.actionTileSub}>Faculty & duties</Text>
+          </Pressable>
+
+          <Pressable
+            style={styles.actionTile}
+            onPress={() => navigation.navigate("ExamManagement")}
+          >
+            <View style={[styles.actionIconBox, { backgroundColor: colors.successLight }]}>
+              <Ionicons name="calendar" size={20} color={colors.success} />
+            </View>
+            <Text style={styles.actionTileTitle}>Exams</Text>
+            <Text style={styles.actionTileSub}>Timetable & dates</Text>
+          </Pressable>
+
+          <Pressable
+            style={styles.actionTile}
+            onPress={() => navigation.navigate("HallManagement")}
+          >
+            <View style={[styles.actionIconBox, { backgroundColor: "#FFF7ED" }]}>
+              <Ionicons name="business" size={20} color="#EA580C" />
+            </View>
+            <Text style={styles.actionTileTitle}>Rooms & Halls</Text>
+            <Text style={styles.actionTileSub}>Benches & seats</Text>
+          </Pressable>
+        </View>
+
+        {/* Bottom Section: Upcoming Examinations & Recent Activity */}
+        <View style={[styles.middleRow, isDesktop && styles.middleRowDesktop]}>
+          {/* Upcoming Exams List */}
+          <View style={styles.sectionCard}>
+            <View style={styles.sectionCardHeader}>
+              <Text style={styles.cardHeaderTitle}>Upcoming Examinations</Text>
+              <Pressable onPress={() => navigation.navigate("ExamManagement")}>
+                <Text style={styles.linkText}>View All →</Text>
+              </Pressable>
+            </View>
+
+            {recentExams.length > 0 ? (
+              recentExams.map((exam, idx) => (
+                <View key={exam.id || idx} style={styles.examItemRow}>
+                  <View style={styles.examItemLeft}>
+                    <Text style={styles.examCodeText}>{exam.course_code || exam.subject_code}</Text>
+                    <Text style={styles.examNameText} numberOfLines={1}>
+                      {exam.course_name || exam.name}
+                    </Text>
+                    <Text style={styles.examDateText}>
+                      📅 {exam.exam_date} • {exam.start_time?.slice(0, 5)} - {exam.end_time?.slice(0, 5)} ({exam.session})
+                    </Text>
+                  </View>
+                  <Badge label={exam.status || "SCHEDULED"} variant="info" size="sm" />
+                </View>
+              ))
+            ) : (
+              <View style={styles.examItemRow}>
+                <View style={styles.examItemLeft}>
+                  <Text style={styles.examCodeText}>21CS51-DBMS</Text>
+                  <Text style={styles.examNameText}>Database Management Systems</Text>
+                  <Text style={styles.examDateText}>📅 2026-11-04 • 10:00 - 13:00 (Morning)</Text>
+                </View>
+                <Badge label="SCHEDULED" variant="info" size="sm" />
+              </View>
+            )}
+          </View>
+
+          {/* Recent System Activity */}
+          <View style={styles.sectionCard}>
+            <View style={styles.sectionCardHeader}>
+              <Text style={styles.cardHeaderTitle}>Recent System Activity</Text>
+              <Badge label="Live Audit" variant="neutral" size="sm" />
+            </View>
+
+            {recentActivities.length > 0 ? (
+              recentActivities.map((log, idx) => (
+                <View key={log.id || idx} style={styles.activityItem}>
+                  <View style={styles.activityDot} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.activityAction}>{log.action || "System Event"}</Text>
+                    <Text style={styles.activityDetails} numberOfLines={2}>
+                      {log.details || "Activity performed"}
+                    </Text>
+                  </View>
+                  <Text style={styles.activityTime}>
+                    {log.created_at ? log.created_at.slice(11, 16) : "Just now"}
+                  </Text>
+                </View>
+              ))
+            ) : (
+              <View style={styles.activityItem}>
+                <View style={styles.activityDot} />
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.activityAction}>System Initialized</Text>
+                  <Text style={styles.activityDetails}>ExamEase database models ready</Text>
+                </View>
+                <Text style={styles.activityTime}>Active</Text>
+              </View>
+            )}
+          </View>
         </View>
       </ScrollView>
-    </View>
+    </ResponsiveLayout>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#ffffff",
-  },
   scroll: {
     padding: 18,
     paddingBottom: 40,
   },
-  headerBlock: {
-    marginBottom: 16,
+  scrollDesktop: {
+    maxWidth: 1140,
+    width: "100%",
+    alignSelf: "center",
   },
-  mainTitle: {
-    fontSize: 22,
-    fontWeight: "800",
-    color: "#0f172a",
-    letterSpacing: -0.4,
-  },
-  mainSub: {
-    fontSize: 13,
-    color: "#64748b",
-    marginTop: 4,
-    fontWeight: "500",
-  },
-  grid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    justifyContent: "space-between",
-    marginBottom: 6,
-  },
-  statCard: {
-    width: "48%",
-    backgroundColor: "#ffffff",
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: "#e2e8f0",
-    padding: 14,
-    marginBottom: 12,
-  },
-  statCardTop: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
-  statLabel: {
-    fontSize: 12,
-    fontWeight: "600",
-    color: "#64748b",
-  },
-  iconCircle: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  statValue: {
-    fontSize: 28,
-    fontWeight: "800",
-    marginTop: 6,
-    letterSpacing: -0.5,
-  },
-  statSub: {
-    fontSize: 11,
-    color: "#94a3b8",
-    marginTop: 2,
-    fontWeight: "500",
-  },
-  seatingStatusCard: {
-    backgroundColor: "#ffffff",
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: "#e2e8f0",
-    padding: 16,
-    marginBottom: 20,
-    marginTop: 4,
-  },
-  seatingStatusTitle: {
-    fontSize: 15,
-    fontWeight: "800",
-    color: "#0f172a",
-    marginBottom: 14,
-  },
-  seatingStatusRow: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  statusCol: {
-    flex: 1,
-  },
-  statusColInner: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  statusCount: {
-    fontSize: 19,
-    fontWeight: "800",
-    color: "#0f172a",
-  },
-  statusSub: {
-    fontSize: 11,
-    color: "#64748b",
-    fontWeight: "500",
-  },
-  vDivider: {
-    width: 1,
-    height: 38,
-    backgroundColor: "#e2e8f0",
-  },
-  sectionHeading: {
-    fontSize: 16,
-    fontWeight: "800",
-    color: "#0f172a",
-    marginBottom: 12,
-  },
-  quickActionRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    marginBottom: 24,
-  },
-  actionBtn: {
-    flex: 1,
-    backgroundColor: "#ffffff",
+  heroBanner: {
+    backgroundColor: colors.surface,
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: "#e2e8f0",
-    paddingVertical: 12,
-    paddingHorizontal: 4,
+    borderColor: colors.border,
+    padding: 18,
+    marginBottom: 16,
+    flexDirection: "row",
     alignItems: "center",
-    marginHorizontal: 3,
+    justifyContent: "space-between",
+    flexWrap: "wrap",
+    gap: 12,
+    ...shadows.sm,
   },
-  actionIconCircle: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+  heroTextCol: {
+    flex: 1,
+    minWidth: 260,
+  },
+  heroTitle: {
+    fontSize: 18,
+    fontWeight: typography.weights.extrabold,
+    color: colors.text,
+    letterSpacing: -0.3,
+  },
+  heroSub: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    marginTop: 2,
+    lineHeight: 16,
+  },
+  heroActionBtn: {
+    backgroundColor: colors.primary,
+    borderRadius: 8,
+    paddingVertical: 9,
+    paddingHorizontal: 14,
+    flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 6,
   },
-  actionLabel: {
-    fontSize: 11,
-    fontWeight: "700",
-    color: "#0f172a",
-    textAlign: "center",
+  heroActionBtnText: {
+    color: "#FFFFFF",
+    fontSize: 13,
+    fontWeight: typography.weights.bold,
   },
-  recentExamsHeader: {
+  kpiGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 12,
+    marginBottom: 16,
+  },
+  kpiCardWrap: {
+    flex: 1,
+    minWidth: 150,
+  },
+  middleRow: {
+    gap: 14,
+    marginBottom: 20,
+  },
+  middleRowDesktop: {
+    flexDirection: "row",
+  },
+  sectionCard: {
+    flex: 1,
+    backgroundColor: colors.surface,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: 16,
+    ...shadows.sm,
+  },
+  sectionCardHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
-    alignItems: "center",
+    alignItems: "flex-start",
     marginBottom: 12,
   },
-  viewAllText: {
+  cardHeaderTitle: {
+    fontSize: 14,
+    fontWeight: typography.weights.bold,
+    color: colors.text,
+  },
+  cardHeaderSub: {
+    fontSize: 11,
+    color: colors.textSecondary,
+    marginTop: 1,
+  },
+  linkText: {
+    fontSize: 12,
+    fontWeight: typography.weights.bold,
+    color: colors.primary,
+  },
+  progressTrack: {
+    height: 8,
+    backgroundColor: colors.surfaceAlt,
+    borderRadius: 4,
+    overflow: "hidden",
+    marginVertical: 10,
+  },
+  progressBar: {
+    height: "100%",
+    backgroundColor: colors.primary,
+    borderRadius: 4,
+  },
+  statBreakdownRow: {
+    flexDirection: "row",
+    marginTop: 10,
+  },
+  statMiniCol: {
+    flex: 1,
+    alignItems: "center",
+  },
+  statMiniVal: {
+    fontSize: 16,
+    fontWeight: typography.weights.extrabold,
+    color: colors.text,
+  },
+  statMiniLabel: {
+    fontSize: 10,
+    color: colors.textMuted,
+    marginTop: 2,
+    fontWeight: typography.weights.medium,
+  },
+  statDivider: {
+    width: 1,
+    backgroundColor: colors.border,
+    marginHorizontal: 8,
+  },
+  plansStatusRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 12,
+  },
+  planStatusBox: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  planStatusCount: {
+    fontSize: 18,
+    fontWeight: typography.weights.extrabold,
+    color: colors.text,
+  },
+  planStatusLabel: {
+    fontSize: 11,
+    color: colors.textSecondary,
+    marginTop: 1,
+  },
+  sectionHeading: {
     fontSize: 13,
-    fontWeight: "700",
-    color: "#2563eb",
+    fontWeight: typography.weights.bold,
+    color: colors.textSecondary,
+    textTransform: "uppercase",
+    letterSpacing: 0.6,
+    marginBottom: 10,
   },
-  recentExamCard: {
-    backgroundColor: "#ffffff",
-    borderRadius: 16,
+  quickActionsGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 10,
+    marginBottom: 20,
+  },
+  actionTile: {
+    flex: 1,
+    minWidth: 120,
+    backgroundColor: colors.surface,
+    borderRadius: 12,
     borderWidth: 1,
-    borderColor: "#e2e8f0",
-    padding: 16,
+    borderColor: colors.border,
+    padding: 12,
+    alignItems: "center",
+    ...shadows.sm,
   },
-  recentExamTop: {
+  actionIconBox: {
+    width: 38,
+    height: 38,
+    borderRadius: 10,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 8,
+  },
+  actionTileTitle: {
+    fontSize: 12,
+    fontWeight: typography.weights.bold,
+    color: colors.text,
+    textAlign: "center",
+  },
+  actionTileSub: {
+    fontSize: 10,
+    color: colors.textMuted,
+    marginTop: 2,
+    textAlign: "center",
+  },
+  examItemRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.borderLight,
   },
-  recentExamCode: {
-    fontSize: 14,
-    fontWeight: "800",
-    color: "#2563eb",
+  examItemLeft: {
+    flex: 1,
+    marginRight: 10,
   },
-  scheduledBadge: {
-    backgroundColor: "#fef9c3",
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 6,
-  },
-  scheduledBadgeText: {
-    fontSize: 11,
-    fontWeight: "800",
-    color: "#a16207",
-  },
-  recentExamTitle: {
-    fontSize: 15,
-    fontWeight: "700",
-    color: "#0f172a",
-    marginTop: 6,
-  },
-  recentExamSub: {
+  examCodeText: {
     fontSize: 12,
-    color: "#64748b",
-    marginTop: 4,
-    fontWeight: "500",
+    fontWeight: typography.weights.bold,
+    color: colors.primary,
+  },
+  examNameText: {
+    fontSize: 13,
+    fontWeight: typography.weights.semibold,
+    color: colors.text,
+    marginTop: 2,
+  },
+  examDateText: {
+    fontSize: 11,
+    color: colors.textSecondary,
+    marginTop: 2,
+  },
+  activityItem: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    paddingVertical: 9,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.borderLight,
+  },
+  activityDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: colors.primary,
+    marginTop: 6,
+    marginRight: 10,
+  },
+  activityAction: {
+    fontSize: 12,
+    fontWeight: typography.weights.semibold,
+    color: colors.text,
+  },
+  activityDetails: {
+    fontSize: 11,
+    color: colors.textSecondary,
+    marginTop: 1,
+  },
+  activityTime: {
+    fontSize: 10,
+    color: colors.textMuted,
+    marginLeft: 8,
   },
 });

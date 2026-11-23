@@ -9,16 +9,17 @@ import {
   RefreshControl,
   useWindowDimensions,
 } from "react-native";
-import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
-import { colors } from "../../theme/colors";
-import { Header } from "../../components/Header";
+import { Ionicons } from "@expo/vector-icons";
+import { ResponsiveLayout } from "../../components/ResponsiveLayout";
+import { Badge } from "../../components/Badge";
 import { LoadingSpinner } from "../../components/LoadingSpinner";
+import { colors, typography, shadows } from "../../theme/colors";
 import { showAlert } from "../../utils/alerts";
 import api, { examApi, hallApi, seatingApi } from "../../services/api";
 
 export default function SeatingGeneratorScreen({ navigation }) {
   const { width } = useWindowDimensions();
-  const isDesktop = width >= 768;
+  const isDesktop = width >= 900;
 
   const [exams, setExams] = useState([]);
   const [halls, setHalls] = useState([]);
@@ -52,7 +53,6 @@ export default function SeatingGeneratorScreen({ navigation }) {
         const hdata = hallsRes.value.data || hallsRes.value;
         const loadedHalls = hdata.halls || [];
         setHalls(loadedHalls);
-        // Default select all active halls
         setSelectedHallIds(loadedHalls.map((h) => h.id));
       }
 
@@ -61,7 +61,6 @@ export default function SeatingGeneratorScreen({ navigation }) {
         setPlans(pdata.plans || []);
       }
 
-      // If no exam selected yet, select the first scheduled one
       if (loadedExams.length > 0 && !selectedExamId) {
         handleSelectExam(loadedExams[0]);
       }
@@ -175,32 +174,31 @@ export default function SeatingGeneratorScreen({ navigation }) {
     }
   };
 
-  if (loading) return <LoadingSpinner message="Loading seating generator..." />;
+  if (loading) return <LoadingSpinner message="Loading seating allocation engine..." />;
 
   return (
-    <View style={styles.container}>
-      <Header
-        title="Seating Allocation Generator"
-        subtitle="Automatic exam seat allocation & hall assignment"
-        showBack
-      />
-
+    <ResponsiveLayout
+      title="Seating Allocation Generator"
+      subtitle="Automated anti-collision exam seat allocation & hall assignment"
+      currentRouteName="SeatingPlans"
+    >
       <ScrollView
         contentContainerStyle={[
           styles.scroll,
           isDesktop && styles.scrollDesktop,
         ]}
+        showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); loadData(); }} />}
       >
         {/* Step 1: Select Examination */}
-        <View style={styles.sectionCard}>
-          <View style={styles.sectionCardHeader}>
-            <View style={[styles.stepBadge, { backgroundColor: "#eff6ff" }]}>
-              <Text style={[styles.stepBadgeText, { color: "#1d4ed8" }]}>1</Text>
+        <View style={styles.stepCard}>
+          <View style={styles.stepHeader}>
+            <View style={styles.stepBadge}>
+              <Text style={styles.stepBadgeText}>1</Text>
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={styles.sectionTitle}>Select Examination</Text>
-              <Text style={styles.sectionSub}>Choose scheduled exam for seating allocation</Text>
+              <Text style={styles.stepTitle}>Select Examination</Text>
+              <Text style={styles.stepSub}>Choose scheduled exam for seating allocation</Text>
             </View>
           </View>
 
@@ -220,7 +218,7 @@ export default function SeatingGeneratorScreen({ navigation }) {
                     {exam.course_name || exam.name}
                   </Text>
                   <Text style={[styles.examChipDate, isSelected && styles.examChipDateActive]}>
-                    {exam.exam_date}
+                    📅 {exam.exam_date}
                   </Text>
                 </Pressable>
               );
@@ -229,9 +227,9 @@ export default function SeatingGeneratorScreen({ navigation }) {
 
           {/* Selected Exam Details Card */}
           {selectedExam ? (
-            <View style={styles.selectedExamDetail}>
+            <View style={styles.selectedExamBox}>
               <View style={styles.selectedExamTop}>
-                <View>
+                <View style={{ flex: 1, marginRight: 10 }}>
                   <Text style={styles.selectedExamTitle}>
                     {selectedExam.course_name || selectedExam.name} ({selectedExam.course_code || selectedExam.subject_code})
                   </Text>
@@ -250,9 +248,9 @@ export default function SeatingGeneratorScreen({ navigation }) {
 
               {selectedExamRegCount === 0 && (
                 <View style={styles.emptyRegWarning}>
-                  <Ionicons name="alert-circle" size={18} color="#b45309" style={{ marginRight: 8 }} />
+                  <Ionicons name="alert-circle" size={16} color={colors.warning} style={{ marginRight: 6 }} />
                   <Text style={styles.emptyRegWarningText}>
-                    No registered students found yet for this exam.
+                    No registered students found for this exam yet.
                   </Text>
                   <Pressable
                     style={styles.autoRegisterBtn}
@@ -260,7 +258,7 @@ export default function SeatingGeneratorScreen({ navigation }) {
                     disabled={registering}
                   >
                     <Text style={styles.autoRegisterBtnText}>
-                      {registering ? "Registering..." : "Register Students"}
+                      {registering ? "Registering..." : "Auto-Register"}
                     </Text>
                   </Pressable>
                 </View>
@@ -272,17 +270,17 @@ export default function SeatingGeneratorScreen({ navigation }) {
         </View>
 
         {/* Step 2: Select Examination Halls */}
-        <View style={styles.sectionCard}>
-          <View style={styles.sectionCardHeader}>
-            <View style={[styles.stepBadge, { backgroundColor: "#f0fdf4" }]}>
-              <Text style={[styles.stepBadgeText, { color: "#16a34a" }]}>2</Text>
+        <View style={styles.stepCard}>
+          <View style={styles.stepHeader}>
+            <View style={[styles.stepBadge, { backgroundColor: colors.successLight }]}>
+              <Text style={[styles.stepBadgeText, { color: colors.successText }]}>2</Text>
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={styles.sectionTitle}>Select Examination Halls</Text>
-              <Text style={styles.sectionSub}>Pick rooms to allocate students into</Text>
+              <Text style={styles.stepTitle}>Select Examination Halls</Text>
+              <Text style={styles.stepSub}>Pick available rooms to allocate seats into</Text>
             </View>
-            <Pressable onPress={handleSelectAllHalls}>
-              <Text style={styles.selectAllText}>Select All</Text>
+            <Pressable onPress={handleSelectAllHalls} hitSlop={6}>
+              <Text style={styles.selectAllLink}>Select All Halls</Text>
             </Pressable>
           </View>
 
@@ -301,14 +299,14 @@ export default function SeatingGeneratorScreen({ navigation }) {
                     </Text>
                     <Ionicons
                       name={isSelected ? "checkbox" : "square-outline"}
-                      size={20}
-                      color={isSelected ? "#2563eb" : "#94a3b8"}
+                      size={18}
+                      color={isSelected ? colors.primary : colors.textMuted}
                     />
                   </View>
-                  <Text style={[styles.hallSelectBuilding, isSelected && { color: "#1e293b" }]}>
+                  <Text style={styles.hallSelectBuilding}>
                     {hall.building} (Floor {hall.floor})
                   </Text>
-                  <Text style={[styles.hallSelectCap, isSelected && { color: "#16a34a", fontWeight: "700" }]}>
+                  <Text style={[styles.hallSelectCap, isSelected && { color: colors.successText, fontWeight: "700" }]}>
                     Capacity: {hall.capacity} seats ({hall.num_rows || hall.rows_count} benches)
                   </Text>
                 </Pressable>
@@ -317,64 +315,66 @@ export default function SeatingGeneratorScreen({ navigation }) {
           </View>
         </View>
 
-        {/* Step 3: Verification & Automatic Generation */}
-        <View style={styles.sectionCard}>
-          <View style={styles.sectionCardHeader}>
-            <View style={[styles.stepBadge, { backgroundColor: "#faf5ff" }]}>
-              <Text style={[styles.stepBadgeText, { color: "#9333ea" }]}>3</Text>
+        {/* Step 3: Capacity Verification & Run Engine */}
+        <View style={styles.stepCard}>
+          <View style={styles.stepHeader}>
+            <View style={[styles.stepBadge, { backgroundColor: colors.infoLight }]}>
+              <Text style={[styles.stepBadgeText, { color: colors.infoText }]}>3</Text>
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={styles.sectionTitle}>Verify Capacity & Generate</Text>
-              <Text style={styles.sectionSub}>Validate seating balance and run allocation</Text>
+              <Text style={styles.stepTitle}>Verify Capacity & Generate</Text>
+              <Text style={styles.stepSub}>Confirm room capacity and run automated seating engine</Text>
             </View>
           </View>
 
-          {/* Verification Stats Bar */}
+          {/* Verification Metrics Bar */}
           <View style={[styles.capacitySummaryBox, hasSufficientCapacity ? styles.capacityOk : styles.capacityWarn]}>
-            <View style={styles.capacityStatCol}>
-              <Text style={styles.capacityStatLabel}>Students to Seat</Text>
-              <Text style={styles.capacityStatVal}>{selectedExamRegCount}</Text>
+            <View style={styles.capacityCol}>
+              <Text style={styles.capacityLabel}>Students to Seat</Text>
+              <Text style={styles.capacityVal}>{selectedExamRegCount}</Text>
             </View>
             <View style={styles.capacityDivider} />
-            <View style={styles.capacityStatCol}>
-              <Text style={styles.capacityStatLabel}>Selected Hall Seats</Text>
-              <Text style={[styles.capacityStatVal, { color: hasSufficientCapacity ? "#16a34a" : "#b45309" }]}>
+            <View style={styles.capacityCol}>
+              <Text style={styles.capacityLabel}>Selected Hall Seats</Text>
+              <Text style={[styles.capacityVal, { color: hasSufficientCapacity ? colors.successText : colors.warningText }]}>
                 {totalSelectedCapacity}
               </Text>
             </View>
             <View style={styles.capacityDivider} />
-            <View style={styles.capacityStatCol}>
-              <Text style={styles.capacityStatLabel}>Surplus / Deficit</Text>
-              <Text style={[styles.capacityStatVal, { color: hasSufficientCapacity ? "#16a34a" : "#dc2626" }]}>
-                {totalSelectedCapacity - selectedExamRegCount >= 0 ? `+${totalSelectedCapacity - selectedExamRegCount}` : `${totalSelectedCapacity - selectedExamRegCount}`}
+            <View style={styles.capacityCol}>
+              <Text style={styles.capacityLabel}>Surplus / Deficit</Text>
+              <Text style={[styles.capacityVal, { color: hasSufficientCapacity ? colors.successText : colors.errorText }]}>
+                {totalSelectedCapacity - selectedExamRegCount >= 0
+                  ? `+${totalSelectedCapacity - selectedExamRegCount}`
+                  : `${totalSelectedCapacity - selectedExamRegCount}`}
               </Text>
             </View>
           </View>
 
-          {/* Generation Button */}
+          {/* Generate Button */}
           <Pressable
-            style={[styles.generateBtn, generating && { opacity: 0.7 }]}
+            style={[styles.generateBtn, generating && styles.btnDisabled]}
             onPress={handleGenerate}
             disabled={generating}
           >
             {generating ? (
               <View style={styles.btnRow}>
-                <ActivityIndicator color="#ffffff" size="small" />
+                <ActivityIndicator color="#FFFFFF" size="small" />
                 <Text style={[styles.generateBtnText, { marginLeft: 10 }]}>Running Auto-Allocation Engine...</Text>
               </View>
             ) : (
               <View style={styles.btnRow}>
-                <Ionicons name="sparkles" size={20} color="#ffffff" style={{ marginRight: 8 }} />
+                <Ionicons name="sparkles" size={18} color="#FFFFFF" style={{ marginRight: 8 }} />
                 <Text style={styles.generateBtnText}>Generate Seating Arrangement</Text>
               </View>
             )}
           </Pressable>
         </View>
 
-        {/* Previously Generated Plans History */}
+        {/* Previously Saved Seating Plans */}
         <View style={styles.historySection}>
-          <Text style={styles.historyTitle}>Saved Seating Arrangements</Text>
-          <Text style={styles.historySub}>Review, inspect grid & publish live arrangements</Text>
+          <Text style={styles.historyHeading}>Saved Seating Arrangements</Text>
+          <Text style={styles.historySub}>Inspect interactive hall visual grid & publish live arrangements</Text>
 
           {plans.length === 0 ? (
             <Text style={styles.noPlansText}>No seating arrangements generated yet.</Text>
@@ -389,22 +389,22 @@ export default function SeatingGeneratorScreen({ navigation }) {
                 >
                   <View style={styles.planCardTop}>
                     <Text style={styles.planExamName}>{p.plan_name || p.exam_name || "Seating Plan"}</Text>
-                    <View style={[styles.planStatusPill, { backgroundColor: isPub ? "#dcfce7" : "#fef3c7" }]}>
-                      <Text style={[styles.planStatusText, { color: isPub ? "#15803d" : "#b45309" }]}>
-                        {p.status || "DRAFT"}
-                      </Text>
-                    </View>
+                    <Badge
+                      label={p.status || "DRAFT"}
+                      variant={isPub ? "success" : "warning"}
+                      size="sm"
+                    />
                   </View>
 
                   <Text style={styles.planMeta}>
-                    📅 {p.exam_date} • {p.start_time} - {p.end_time} • Version {p.version || 1}
+                    📅 {p.exam_date} • {p.start_time?.slice(0, 5)} - {p.end_time?.slice(0, 5)} • Version {p.version || 1}
                   </Text>
                   <Text style={styles.planAllocated}>
-                    👥 Allocated: <Text style={{ fontWeight: "700", color: "#0f172a" }}>{p.allocated_seats || p.total_allocated || 0} students</Text>
+                    👥 Allocated: <Text style={{ fontWeight: "700", color: colors.text }}>{p.allocated_seats || p.total_allocated || 0} candidates</Text>
                   </Text>
 
                   <View style={styles.planActionRow}>
-                    <Text style={styles.viewPlanLink}>View Visual Grid & Seat Allocations →</Text>
+                    <Text style={styles.viewPlanLink}>View Visual Hall Grid & Allocations →</Text>
                   </View>
                 </Pressable>
               );
@@ -412,116 +412,110 @@ export default function SeatingGeneratorScreen({ navigation }) {
           )}
         </View>
       </ScrollView>
-    </View>
+    </ResponsiveLayout>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#f8fafc",
-  },
   scroll: {
-    padding: 16,
+    padding: 18,
     paddingBottom: 40,
-    width: "100%",
   },
   scrollDesktop: {
-    maxWidth: 900,
+    maxWidth: 1140,
+    width: "100%",
     alignSelf: "center",
   },
-  sectionCard: {
-    backgroundColor: "#ffffff",
-    borderRadius: 16,
+  stepCard: {
+    backgroundColor: colors.surface,
+    borderRadius: 14,
     borderWidth: 1,
-    borderColor: "#e2e8f0",
+    borderColor: colors.border,
     padding: 16,
     marginBottom: 16,
-    shadowColor: "#0f172a",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.04,
-    shadowRadius: 8,
-    elevation: 2,
+    ...shadows.sm,
   },
-  sectionCardHeader: {
+  stepHeader: {
     flexDirection: "row",
     alignItems: "center",
-    marginBottom: 14,
+    marginBottom: 12,
   },
   stepBadge: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: colors.primaryLight,
     justifyContent: "center",
     alignItems: "center",
     marginRight: 10,
   },
   stepBadgeText: {
-    fontSize: 13,
-    fontWeight: "800",
+    fontSize: 12,
+    fontWeight: typography.weights.bold,
+    color: colors.primaryDark,
   },
-  sectionTitle: {
-    fontSize: 15,
-    fontWeight: "800",
-    color: "#0f172a",
+  stepTitle: {
+    fontSize: 14,
+    fontWeight: typography.weights.bold,
+    color: colors.text,
   },
-  sectionSub: {
+  stepSub: {
     fontSize: 11,
-    color: "#64748b",
+    color: colors.textSecondary,
     marginTop: 1,
   },
-  selectAllText: {
+  selectAllLink: {
     fontSize: 12,
-    fontWeight: "700",
-    color: "#2563eb",
+    fontWeight: typography.weights.bold,
+    color: colors.primary,
   },
   examPickerScroll: {
     flexDirection: "row",
-    marginBottom: 12,
+    marginBottom: 10,
   },
   examChip: {
     width: 170,
     padding: 12,
-    borderRadius: 12,
-    backgroundColor: "#f8fafc",
+    borderRadius: 10,
+    backgroundColor: colors.surfaceAlt,
     borderWidth: 1,
-    borderColor: "#e2e8f0",
+    borderColor: colors.border,
     marginRight: 10,
   },
   examChipActive: {
-    backgroundColor: "#eff6ff",
-    borderColor: "#3b82f6",
+    backgroundColor: colors.primaryLight,
+    borderColor: colors.primary,
   },
   examChipCode: {
-    fontSize: 13,
-    fontWeight: "800",
-    color: "#475569",
+    fontSize: 12,
+    fontWeight: typography.weights.bold,
+    color: colors.textSecondary,
     marginBottom: 2,
   },
   examChipCodeActive: {
-    color: "#1d4ed8",
+    color: colors.primaryDark,
   },
   examChipName: {
     fontSize: 12,
-    fontWeight: "600",
-    color: "#0f172a",
+    fontWeight: typography.weights.semibold,
+    color: colors.text,
     marginBottom: 4,
   },
   examChipNameActive: {
-    color: "#1e3a8a",
+    color: colors.primaryDark,
   },
   examChipDate: {
     fontSize: 11,
-    color: "#64748b",
+    color: colors.textMuted,
   },
   examChipDateActive: {
-    color: "#2563eb",
+    color: colors.primary,
   },
-  selectedExamDetail: {
-    backgroundColor: "#f8fafc",
-    borderRadius: 10,
+  selectedExamBox: {
+    backgroundColor: colors.surfaceAlt,
+    borderRadius: 8,
     borderWidth: 1,
-    borderColor: "#e2e8f0",
+    borderColor: colors.border,
     padding: 12,
     marginTop: 4,
   },
@@ -531,24 +525,24 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   selectedExamTitle: {
-    fontSize: 14,
-    fontWeight: "800",
-    color: "#0f172a",
+    fontSize: 13,
+    fontWeight: typography.weights.bold,
+    color: colors.text,
   },
   selectedExamMeta: {
-    fontSize: 12,
-    color: "#475569",
+    fontSize: 11,
+    color: colors.textSecondary,
     marginTop: 2,
   },
   selectedExamDept: {
     fontSize: 11,
-    color: "#64748b",
+    color: colors.textMuted,
     marginTop: 2,
   },
   regCountPill: {
-    backgroundColor: "#eff6ff",
+    backgroundColor: colors.primaryLight,
     borderWidth: 1,
-    borderColor: "#bfdbfe",
+    borderColor: colors.primaryMuted,
     borderRadius: 8,
     paddingHorizontal: 12,
     paddingVertical: 6,
@@ -556,55 +550,61 @@ const styles = StyleSheet.create({
   },
   regCountNum: {
     fontSize: 16,
-    fontWeight: "800",
-    color: "#1d4ed8",
+    fontWeight: typography.weights.extrabold,
+    color: colors.primaryDark,
   },
   regCountLabel: {
     fontSize: 10,
-    color: "#2563eb",
-    fontWeight: "600",
+    color: colors.primary,
+    fontWeight: typography.weights.semibold,
   },
   emptyRegWarning: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#fef3c7",
-    padding: 10,
-    borderRadius: 8,
-    marginTop: 10,
+    backgroundColor: colors.warningLight,
+    padding: 8,
+    borderRadius: 6,
+    marginTop: 8,
   },
   emptyRegWarningText: {
     flex: 1,
-    fontSize: 12,
-    color: "#92400e",
-    fontWeight: "600",
+    fontSize: 11,
+    color: colors.warningText,
+    fontWeight: typography.weights.medium,
   },
   autoRegisterBtn: {
-    backgroundColor: "#d97706",
-    paddingVertical: 6,
-    paddingHorizontal: 10,
-    borderRadius: 6,
+    backgroundColor: colors.warningText,
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    borderRadius: 4,
   },
   autoRegisterBtnText: {
-    fontSize: 11,
-    fontWeight: "700",
-    color: "#ffffff",
+    fontSize: 10,
+    fontWeight: typography.weights.bold,
+    color: "#FFFFFF",
+  },
+  noExamText: {
+    fontSize: 12,
+    color: colors.textMuted,
+    paddingVertical: 8,
   },
   hallsGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: 10,
+    gap: 8,
   },
   hallSelectCard: {
-    width: "48%",
-    backgroundColor: "#f8fafc",
-    borderRadius: 10,
+    flex: 1,
+    minWidth: 140,
+    backgroundColor: colors.surfaceAlt,
+    borderRadius: 8,
     borderWidth: 1.5,
-    borderColor: "#e2e8f0",
-    padding: 12,
+    borderColor: colors.border,
+    padding: 10,
   },
   hallSelectCardActive: {
-    backgroundColor: "#eff6ff",
-    borderColor: "#3b82f6",
+    backgroundColor: colors.primaryLight,
+    borderColor: colors.primary,
   },
   hallSelectCardTop: {
     flexDirection: "row",
@@ -613,69 +613,68 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   hallSelectCode: {
-    fontSize: 13,
-    fontWeight: "800",
-    color: "#334155",
+    fontSize: 12,
+    fontWeight: typography.weights.bold,
+    color: colors.text,
   },
   hallSelectCodeActive: {
-    color: "#1d4ed8",
+    color: colors.primaryDark,
   },
   hallSelectBuilding: {
     fontSize: 11,
-    color: "#64748b",
+    color: colors.textSecondary,
   },
   hallSelectCap: {
-    fontSize: 11,
-    color: "#475569",
+    fontSize: 10,
+    color: colors.textMuted,
     marginTop: 4,
   },
   capacitySummaryBox: {
     flexDirection: "row",
-    borderRadius: 12,
+    borderRadius: 10,
     borderWidth: 1,
-    paddingVertical: 12,
-    marginBottom: 16,
+    paddingVertical: 10,
+    marginBottom: 14,
   },
   capacityOk: {
-    backgroundColor: "#f0fdf4",
-    borderColor: "#bbf7d0",
+    backgroundColor: colors.successLight,
+    borderColor: colors.successBorder,
   },
   capacityWarn: {
-    backgroundColor: "#fef3c7",
-    borderColor: "#fde68a",
+    backgroundColor: colors.warningLight,
+    borderColor: colors.warningBorder,
   },
-  capacityStatCol: {
+  capacityCol: {
     flex: 1,
     alignItems: "center",
   },
-  capacityStatLabel: {
-    fontSize: 11,
-    color: "#475569",
-    fontWeight: "600",
+  capacityLabel: {
+    fontSize: 10,
+    color: colors.textSecondary,
+    fontWeight: typography.weights.semibold,
   },
-  capacityStatVal: {
-    fontSize: 18,
-    fontWeight: "800",
-    color: "#0f172a",
+  capacityVal: {
+    fontSize: 17,
+    fontWeight: typography.weights.extrabold,
+    color: colors.text,
     marginTop: 2,
   },
   capacityDivider: {
     width: 1,
-    height: "80%",
-    backgroundColor: "#cbd5e1",
+    backgroundColor: colors.border,
     alignSelf: "center",
+    height: "70%",
   },
   generateBtn: {
-    height: 50,
-    backgroundColor: "#1e3a8a",
-    borderRadius: 10,
+    height: 46,
+    backgroundColor: colors.primary,
+    borderRadius: 8,
     justifyContent: "center",
     alignItems: "center",
-    shadowColor: "#1e3a8a",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.25,
-    shadowRadius: 8,
-    elevation: 3,
+    ...shadows.sm,
+  },
+  btnDisabled: {
+    opacity: 0.65,
   },
   btnRow: {
     flexDirection: "row",
@@ -683,82 +682,69 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   generateBtnText: {
-    fontSize: 15,
-    fontWeight: "700",
-    color: "#ffffff",
+    fontSize: 13,
+    fontWeight: typography.weights.bold,
+    color: "#FFFFFF",
   },
   historySection: {
     marginTop: 8,
   },
-  historyTitle: {
-    fontSize: 16,
-    fontWeight: "800",
-    color: "#0f172a",
+  historyHeading: {
+    fontSize: 14,
+    fontWeight: typography.weights.bold,
+    color: colors.text,
   },
   historySub: {
     fontSize: 12,
-    color: "#64748b",
-    marginBottom: 12,
+    color: colors.textSecondary,
+    marginBottom: 10,
   },
   noPlansText: {
-    fontSize: 13,
-    color: "#94a3b8",
+    fontSize: 12,
+    color: colors.textMuted,
     textAlign: "center",
-    padding: 20,
+    paddingVertical: 16,
   },
   planCard: {
-    backgroundColor: "#ffffff",
+    backgroundColor: colors.surface,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: "#e2e8f0",
+    borderColor: colors.border,
     padding: 14,
     marginBottom: 10,
+    ...shadows.sm,
   },
   planCardTop: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 6,
+    marginBottom: 4,
   },
   planExamName: {
-    fontSize: 14,
-    fontWeight: "700",
-    color: "#0f172a",
+    fontSize: 13,
+    fontWeight: typography.weights.bold,
+    color: colors.text,
     flex: 1,
     marginRight: 8,
   },
-  planStatusPill: {
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 6,
-  },
-  planStatusText: {
-    fontSize: 10,
-    fontWeight: "700",
-  },
   planMeta: {
-    fontSize: 12,
-    color: "#64748b",
+    fontSize: 11,
+    color: colors.textSecondary,
   },
   planAllocated: {
-    fontSize: 12,
-    color: "#475569",
-    marginTop: 4,
+    fontSize: 11,
+    color: colors.textSecondary,
+    marginTop: 3,
   },
   planActionRow: {
     marginTop: 8,
     paddingTop: 8,
     borderTopWidth: 1,
-    borderTopColor: "#f1f5f9",
+    borderTopColor: colors.borderLight,
   },
   viewPlanLink: {
-    fontSize: 12,
-    fontWeight: "700",
-    color: "#2563eb",
-  },
-  noExamText: {
-    fontSize: 13,
-    color: "#94a3b8",
-    padding: 10,
+    fontSize: 11,
+    fontWeight: typography.weights.bold,
+    color: colors.primary,
   },
 });

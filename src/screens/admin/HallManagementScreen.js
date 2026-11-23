@@ -8,29 +8,31 @@ import {
   Pressable,
   ActivityIndicator,
   RefreshControl,
+  Modal,
   useWindowDimensions,
 } from "react-native";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
-import { colors } from "../../theme/colors";
-import { Header } from "../../components/Header";
+import { ResponsiveLayout } from "../../components/ResponsiveLayout";
+import { Badge } from "../../components/Badge";
 import { LoadingSpinner } from "../../components/LoadingSpinner";
 import { EmptyState } from "../../components/EmptyState";
+import { colors, typography, shadows } from "../../theme/colors";
 import { showAlert } from "../../utils/alerts";
 import api, { hallApi } from "../../services/api";
 
-export default function HallManagementScreen() {
+export default function HallManagementScreen({ navigation }) {
   const { width } = useWindowDimensions();
-  const isDesktop = width >= 768;
+  const isDesktop = width >= 900;
 
   const [halls, setHalls] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [showAddForm, setShowAddForm] = useState(false);
+  const [showAddModal, setShowAddModal] = useState(false);
   const [creating, setCreating] = useState(false);
 
   // Form states
   const [roomNumber, setRoomNumber] = useState("");
-  const [building, setBuilding] = useState("Main Block");
+  const [building, setBuilding] = useState("Main Academic Block");
   const [floor, setFloor] = useState("1");
   const [benches, setBenches] = useState("15");
   const [seatsPerBench, setSeatsPerBench] = useState("2");
@@ -78,7 +80,7 @@ export default function HallManagementScreen() {
     try {
       const payload = {
         name: trimmedRoom,
-        building: building.trim() || "Main Block",
+        building: building.trim() || "Main Academic Block",
         floor: parseInt(floor, 10) || 1,
         benches: numBenches,
         num_rows: numBenches,
@@ -92,10 +94,10 @@ export default function HallManagementScreen() {
       const data = res.data || res;
 
       if (data.success) {
-        showAlert("Success", data.message || `Room ${trimmedRoom} added with ${calculatedCapacity} seats capacity!`);
+        showAlert("Hall Added", `Room ${trimmedRoom} added with ${calculatedCapacity} seats capacity!`);
         setRoomNumber("");
         setNotes("");
-        setShowAddForm(false);
+        setShowAddModal(false);
         fetchHalls();
       } else {
         showAlert("Creation Error", data.error || "Could not create hall.");
@@ -112,7 +114,7 @@ export default function HallManagementScreen() {
       const res = await hallApi.delete(hall.id);
       const data = res.data || res;
       if (data.success) {
-        showAlert("Deleted", `Hall ${hall.name} deleted successfully.`);
+        showAlert("Deleted", `Hall ${hall.name} removed from campus configuration.`);
         fetchHalls();
       } else {
         showAlert("Delete Failed", data.error || "Could not delete hall.");
@@ -122,204 +124,102 @@ export default function HallManagementScreen() {
     }
   };
 
-  return (
-    <View style={styles.container}>
-      <Header
-        title="Room & Hall Management"
-        subtitle="Configure campus halls, benches & seating capacity"
-        showBack
-      />
+  const totalSeats = halls.reduce((acc, h) => acc + (h.capacity || 0), 0);
+  const totalBenches = halls.reduce((acc, h) => acc + (h.num_rows || h.rows_count || 0), 0);
 
+  return (
+    <ResponsiveLayout
+      title="Examination Halls & Rooms"
+      subtitle={`${halls.length} halls • ${totalBenches} benches • ${totalSeats} total seat capacity`}
+      currentRouteName="HallManagement"
+      rightAction={
+        <Pressable
+          style={styles.addBtn}
+          onPress={() => setShowAddModal(true)}
+        >
+          <Ionicons name="add" size={17} color="#FFFFFF" style={{ marginRight: 4 }} />
+          <Text style={styles.addBtnText}>Add Room / Hall</Text>
+        </Pressable>
+      }
+    >
       <ScrollView
         contentContainerStyle={[
           styles.scroll,
           isDesktop && styles.scrollDesktop,
         ]}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); fetchHalls(); }} />}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); fetchHalls(); }} />
+        }
       >
-        {/* Top Action & Summary */}
-        <View style={styles.topBar}>
-          <View>
-            <Text style={styles.sectionTitle}>Examination Rooms</Text>
-            <Text style={styles.sectionSub}>
-              {halls.length} room(s) configured • Total Capacity: {halls.reduce((acc, h) => acc + (h.capacity || 0), 0)} seats
-            </Text>
+        {/* Top Summary Banner */}
+        <View style={styles.summaryCard}>
+          <View style={styles.summaryItem}>
+            <Text style={styles.summaryVal}>{halls.length}</Text>
+            <Text style={styles.summaryLabel}>Total Halls</Text>
           </View>
-          <Pressable
-            style={[styles.toggleBtn, showAddForm && styles.toggleBtnActive]}
-            onPress={() => setShowAddForm(!showAddForm)}
-          >
-            <Ionicons name={showAddForm ? "close" : "add"} size={18} color="#ffffff" style={{ marginRight: 4 }} />
-            <Text style={styles.toggleBtnText}>{showAddForm ? "Cancel" : "Add Room"}</Text>
-          </Pressable>
+          <View style={styles.summaryDivider} />
+          <View style={styles.summaryItem}>
+            <Text style={styles.summaryVal}>{totalBenches}</Text>
+            <Text style={styles.summaryLabel}>Total Benches</Text>
+          </View>
+          <View style={styles.summaryDivider} />
+          <View style={styles.summaryItem}>
+            <Text style={[styles.summaryVal, { color: colors.primary }]}>{totalSeats}</Text>
+            <Text style={styles.summaryLabel}>Seating Capacity</Text>
+          </View>
         </View>
 
-        {/* Add New Room Card / Form */}
-        {showAddForm && (
-          <View style={styles.addCard}>
-            <View style={styles.addCardHeader}>
-              <View style={styles.addCardIconBox}>
-                <Ionicons name="business" size={20} color="#2563eb" />
-              </View>
-              <View>
-                <Text style={styles.addCardTitle}>Add New Examination Hall / Room</Text>
-                <Text style={styles.addCardSub}>Define bench rows and seating capacity</Text>
-              </View>
-            </View>
-
-            {/* Room Number & Building */}
-            <View style={styles.formRow}>
-              <View style={styles.formCol}>
-                <Text style={styles.inputLabel}>Room / Hall Number *</Text>
-                <TextInput
-                  style={styles.input}
-                  placeholder="e.g. LH-101 or Room 204"
-                  placeholderTextColor="#94a3b8"
-                  value={roomNumber}
-                  onChangeText={setRoomNumber}
-                  autoCapitalize="characters"
-                />
-              </View>
-              <View style={styles.formCol}>
-                <Text style={styles.inputLabel}>Building</Text>
-                <TextInput
-                  style={styles.input}
-                  placeholder="e.g. Main Block"
-                  placeholderTextColor="#94a3b8"
-                  value={building}
-                  onChangeText={setBuilding}
-                />
-              </View>
-            </View>
-
-            {/* Floor, Benches, Seats per Bench */}
-            <View style={styles.formRow}>
-              <View style={styles.formCol}>
-                <Text style={styles.inputLabel}>Floor</Text>
-                <TextInput
-                  style={styles.input}
-                  placeholder="1"
-                  placeholderTextColor="#94a3b8"
-                  value={floor}
-                  onChangeText={setFloor}
-                  keyboardType="numeric"
-                />
-              </View>
-              <View style={styles.formCol}>
-                <Text style={styles.inputLabel}>Total Benches *</Text>
-                <TextInput
-                  style={styles.input}
-                  placeholder="15"
-                  placeholderTextColor="#94a3b8"
-                  value={benches}
-                  onChangeText={setBenches}
-                  keyboardType="numeric"
-                />
-              </View>
-              <View style={styles.formCol}>
-                <Text style={styles.inputLabel}>Seats / Bench *</Text>
-                <TextInput
-                  style={styles.input}
-                  placeholder="2"
-                  placeholderTextColor="#94a3b8"
-                  value={seatsPerBench}
-                  onChangeText={setSeatsPerBench}
-                  keyboardType="numeric"
-                />
-              </View>
-            </View>
-
-            {/* Live Calculated Capacity Callout */}
-            <View style={styles.capacityCallout}>
-              <MaterialCommunityIcons name="calculator" size={22} color="#16a34a" style={{ marginRight: 10 }} />
-              <View style={{ flex: 1 }}>
-                <Text style={styles.capacityCalloutTitle}>
-                  Calculated Total Capacity: <Text style={{ color: "#16a34a", fontSize: 16 }}>{calculatedCapacity} Seats</Text>
-                </Text>
-                <Text style={styles.capacityCalloutSub}>
-                  Formula: {numBenches} benches × {numSeatsPerBench} seats per bench
-                </Text>
-              </View>
-            </View>
-
-            {/* Notes */}
-            <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>Notes / Room Features (Optional)</Text>
-              <TextInput
-                style={[styles.input, { height: 40 }]}
-                placeholder="e.g. Projector equipped, CCTV active"
-                placeholderTextColor="#94a3b8"
-                value={notes}
-                onChangeText={setNotes}
-              />
-            </View>
-
-            {/* Submit Button */}
-            <Pressable
-              style={[styles.createBtn, creating && { opacity: 0.7 }]}
-              onPress={handleCreateHall}
-              disabled={creating}
-            >
-              {creating ? (
-                <View style={styles.btnRow}>
-                  <ActivityIndicator color="#ffffff" size="small" />
-                  <Text style={[styles.createBtnText, { marginLeft: 8 }]}>Creating & Generating Seats...</Text>
-                </View>
-              ) : (
-                <View style={styles.btnRow}>
-                  <Ionicons name="checkmark-circle" size={18} color="#ffffff" style={{ marginRight: 6 }} />
-                  <Text style={styles.createBtnText}>Save Room & Generate Seats</Text>
-                </View>
-              )}
-            </Pressable>
-          </View>
-        )}
-
-        {/* Existing Halls List */}
+        {/* Existing Halls Grid */}
         {loading ? (
-          <LoadingSpinner message="Loading exam halls..." />
+          <LoadingSpinner message="Loading examination halls..." />
         ) : halls.length === 0 ? (
           <EmptyState
-            icon="🏛️"
-            title="No Exam Halls Found"
-            message="Click 'Add Room' above to register your first examination hall and configure benches."
+            iconName="business-outline"
+            title="No Examination Halls Configured"
+            message="Click 'Add Room / Hall' to register your first examination room with bench rows."
+            actionLabel="Add Hall Now"
+            onAction={() => setShowAddModal(true)}
           />
         ) : (
-          <View style={styles.cardsGrid}>
+          <View style={styles.hallsGrid}>
             {halls.map((item) => (
-              <View key={item.id} style={styles.card}>
-                <View style={styles.cardTop}>
-                  <View style={styles.cardCodeBadge}>
-                    <Text style={styles.cardCodeText}>{item.hall_code || item.name}</Text>
+              <View key={item.id} style={styles.hallCard}>
+                <View style={styles.cardHeader}>
+                  <View style={styles.hallCodeBadge}>
+                    <Text style={styles.hallCodeText}>{item.hall_code || item.name}</Text>
                   </View>
-                  <View style={styles.cardCapBadge}>
-                    <MaterialCommunityIcons name="seat" size={14} color="#16a34a" style={{ marginRight: 4 }} />
-                    <Text style={styles.cardCapText}>{item.capacity} Seats</Text>
-                  </View>
+                  <Badge
+                    label={`${item.capacity} SEATS`}
+                    variant="success"
+                    size="sm"
+                  />
                 </View>
 
-                <Text style={styles.cardBuilding}>
-                  🏛️ {item.building} • Floor {item.floor}
+                <Text style={styles.hallBuilding}>
+                  🏛️ {item.building} (Floor {item.floor})
                 </Text>
 
+                {/* Bench Breakdown */}
                 <View style={styles.benchDetailBox}>
-                  <View style={styles.benchStat}>
-                    <Text style={styles.benchStatNum}>{item.num_rows || item.rows_count || 0}</Text>
-                    <Text style={styles.benchStatLabel}>Benches / Rows</Text>
+                  <View style={styles.benchCol}>
+                    <Text style={styles.benchNum}>{item.num_rows || item.rows_count || 0}</Text>
+                    <Text style={styles.benchLabel}>Benches / Rows</Text>
                   </View>
-                  <View style={styles.statDivider} />
-                  <View style={styles.benchStat}>
-                    <Text style={styles.benchStatNum}>{item.seats_per_row || item.benches_per_row || 0}</Text>
-                    <Text style={styles.benchStatLabel}>Seats / Bench</Text>
+                  <View style={styles.benchDivider} />
+                  <View style={styles.benchCol}>
+                    <Text style={styles.benchNum}>{item.seats_per_row || item.benches_per_row || 0}</Text>
+                    <Text style={styles.benchLabel}>Seats / Bench</Text>
                   </View>
-                  <View style={styles.statDivider} />
-                  <View style={styles.benchStat}>
-                    <Text style={[styles.benchStatNum, { color: "#16a34a" }]}>{item.capacity}</Text>
-                    <Text style={styles.benchStatLabel}>Max Capacity</Text>
+                  <View style={styles.benchDivider} />
+                  <View style={styles.benchCol}>
+                    <Text style={[styles.benchNum, { color: colors.successText }]}>{item.capacity}</Text>
+                    <Text style={styles.benchLabel}>Room Capacity</Text>
                   </View>
                 </View>
 
-                <View style={styles.cardBottomRow}>
+                {/* Footer Status and Remove */}
+                <View style={styles.cardFooter}>
                   <View style={styles.statusPill}>
                     <View style={styles.statusDot} />
                     <Text style={styles.statusText}>{item.status || "ACTIVE"}</Text>
@@ -330,257 +230,262 @@ export default function HallManagementScreen() {
                     onPress={() => handleDeleteHall(item)}
                     hitSlop={8}
                   >
-                    <Ionicons name="trash-outline" size={16} color="#ef4444" />
-                    <Text style={styles.deleteBtnText}>Remove</Text>
+                    <Ionicons name="trash-outline" size={14} color={colors.error} />
+                    <Text style={styles.deleteBtnText}>Remove Room</Text>
                   </Pressable>
                 </View>
               </View>
             ))}
           </View>
         )}
+
+        {/* Add Room Modal */}
+        <Modal
+          visible={showAddModal}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setShowAddModal(false)}
+        >
+          <View style={styles.modalBackdrop}>
+            <View style={styles.modalCard}>
+              <View style={styles.modalHeader}>
+                <View>
+                  <Text style={styles.modalTitle}>Add Examination Room</Text>
+                  <Text style={styles.modalSub}>Configure bench rows and seating layout</Text>
+                </View>
+                <Pressable onPress={() => setShowAddModal(false)} hitSlop={8}>
+                  <Ionicons name="close" size={20} color={colors.textSecondary} />
+                </Pressable>
+              </View>
+
+              <View style={styles.modalForm}>
+                <View style={styles.modalInputRow}>
+                  <View style={{ flex: 1, marginRight: 8 }}>
+                    <Text style={styles.modalLabel}>Room / Hall Number *</Text>
+                    <TextInput
+                      style={styles.modalInput}
+                      placeholder="e.g. LH-101"
+                      placeholderTextColor={colors.textMuted}
+                      value={roomNumber}
+                      onChangeText={setRoomNumber}
+                      autoCapitalize="characters"
+                    />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.modalLabel}>Floor</Text>
+                    <TextInput
+                      style={styles.modalInput}
+                      placeholder="1"
+                      placeholderTextColor={colors.textMuted}
+                      value={floor}
+                      onChangeText={setFloor}
+                      keyboardType="numeric"
+                    />
+                  </View>
+                </View>
+
+                <View style={styles.modalInputGroup}>
+                  <Text style={styles.modalLabel}>Building Name</Text>
+                  <TextInput
+                    style={styles.modalInput}
+                    placeholder="e.g. Main Academic Block"
+                    placeholderTextColor={colors.textMuted}
+                    value={building}
+                    onChangeText={setBuilding}
+                  />
+                </View>
+
+                <View style={styles.modalInputRow}>
+                  <View style={{ flex: 1, marginRight: 8 }}>
+                    <Text style={styles.modalLabel}>Total Benches *</Text>
+                    <TextInput
+                      style={styles.modalInput}
+                      placeholder="15"
+                      placeholderTextColor={colors.textMuted}
+                      value={benches}
+                      onChangeText={setBenches}
+                      keyboardType="numeric"
+                    />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.modalLabel}>Seats per Bench *</Text>
+                    <TextInput
+                      style={styles.modalInput}
+                      placeholder="2"
+                      placeholderTextColor={colors.textMuted}
+                      value={seatsPerBench}
+                      onChangeText={setSeatsPerBench}
+                      keyboardType="numeric"
+                    />
+                  </View>
+                </View>
+
+                {/* Live Calculated Capacity Callout */}
+                <View style={styles.calculatedCallout}>
+                  <MaterialCommunityIcons name="calculator" size={20} color={colors.success} style={{ marginRight: 8 }} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.calloutTitle}>
+                      Calculated Capacity: <Text style={{ color: colors.successText, fontWeight: "800" }}>{calculatedCapacity} Seats</Text>
+                    </Text>
+                    <Text style={styles.calloutSub}>
+                      {numBenches} benches × {numSeatsPerBench} seats per bench
+                    </Text>
+                  </View>
+                </View>
+
+                <View style={styles.modalInputGroup}>
+                  <Text style={styles.modalLabel}>Room Notes (Optional)</Text>
+                  <TextInput
+                    style={styles.modalInput}
+                    placeholder="e.g. CCTV enabled, projector equipped"
+                    placeholderTextColor={colors.textMuted}
+                    value={notes}
+                    onChangeText={setNotes}
+                  />
+                </View>
+
+                <Pressable
+                  style={[styles.saveBtn, creating && styles.btnDisabled]}
+                  onPress={handleCreateHall}
+                  disabled={creating}
+                >
+                  {creating ? (
+                    <ActivityIndicator size="small" color="#FFFFFF" />
+                  ) : (
+                    <Text style={styles.saveBtnText}>Save Room & Generate Seats</Text>
+                  )}
+                </Pressable>
+              </View>
+            </View>
+          </View>
+        </Modal>
       </ScrollView>
-    </View>
+    </ResponsiveLayout>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#f8fafc",
-  },
   scroll: {
-    padding: 16,
+    padding: 18,
     paddingBottom: 40,
-    width: "100%",
   },
   scrollDesktop: {
-    maxWidth: 900,
+    maxWidth: 1140,
+    width: "100%",
     alignSelf: "center",
   },
-  topBar: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 16,
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: "800",
-    color: "#0f172a",
-  },
-  sectionSub: {
-    fontSize: 12,
-    color: "#64748b",
-    marginTop: 2,
-  },
-  toggleBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#1e3a8a",
-    paddingVertical: 8,
-    paddingHorizontal: 14,
-    borderRadius: 8,
-  },
-  toggleBtnActive: {
-    backgroundColor: "#64748b",
-  },
-  toggleBtnText: {
-    fontSize: 13,
-    fontWeight: "700",
-    color: "#ffffff",
-  },
-  addCard: {
-    backgroundColor: "#ffffff",
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: "#e2e8f0",
-    padding: 18,
-    marginBottom: 20,
-    shadowColor: "#0f172a",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.06,
-    shadowRadius: 12,
-    elevation: 3,
-  },
-  addCardHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 16,
-  },
-  addCardIconBox: {
-    width: 38,
-    height: 38,
-    borderRadius: 10,
-    backgroundColor: "#eff6ff",
-    justifyContent: "center",
-    alignItems: "center",
-    marginRight: 10,
-  },
-  addCardTitle: {
-    fontSize: 15,
-    fontWeight: "700",
-    color: "#0f172a",
-  },
-  addCardSub: {
-    fontSize: 12,
-    color: "#64748b",
-    marginTop: 1,
-  },
-  formRow: {
-    flexDirection: "row",
-    gap: 12,
-    marginBottom: 12,
-  },
-  formCol: {
-    flex: 1,
-  },
-  inputGroup: {
-    marginBottom: 12,
-  },
-  inputLabel: {
-    fontSize: 12,
-    fontWeight: "600",
-    color: "#475569",
-    marginBottom: 4,
-  },
-  input: {
-    height: 44,
-    backgroundColor: "#f8fafc",
-    borderWidth: 1,
-    borderColor: "#cbd5e1",
-    borderRadius: 8,
+  addBtn: {
+    backgroundColor: colors.primary,
+    borderRadius: 7,
+    paddingVertical: 7,
     paddingHorizontal: 12,
-    fontSize: 13,
-    color: "#0f172a",
-  },
-  capacityCallout: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#f0fdf4",
+  },
+  addBtnText: {
+    color: "#FFFFFF",
+    fontSize: 12,
+    fontWeight: typography.weights.bold,
+  },
+  summaryCard: {
+    backgroundColor: colors.surface,
+    borderRadius: 12,
     borderWidth: 1,
-    borderColor: "#bbf7d0",
-    borderRadius: 10,
-    padding: 12,
-    marginBottom: 14,
-  },
-  capacityCalloutTitle: {
-    fontSize: 13,
-    fontWeight: "700",
-    color: "#166534",
-  },
-  capacityCalloutSub: {
-    fontSize: 11,
-    color: "#15803d",
-    marginTop: 2,
-  },
-  createBtn: {
-    height: 46,
-    backgroundColor: "#1e3a8a",
-    borderRadius: 8,
-    justifyContent: "center",
-    alignItems: "center",
-    marginTop: 4,
-  },
-  btnRow: {
+    borderColor: colors.border,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
     flexDirection: "row",
+    marginBottom: 16,
+    ...shadows.sm,
+  },
+  summaryItem: {
+    flex: 1,
     alignItems: "center",
-    justifyContent: "center",
   },
-  createBtnText: {
-    fontSize: 14,
-    fontWeight: "700",
-    color: "#ffffff",
+  summaryVal: {
+    fontSize: 20,
+    fontWeight: typography.weights.extrabold,
+    color: colors.text,
   },
-  cardsGrid: {
+  summaryLabel: {
+    fontSize: 11,
+    color: colors.textSecondary,
+    marginTop: 2,
+    fontWeight: typography.weights.medium,
+  },
+  summaryDivider: {
+    width: 1,
+    backgroundColor: colors.border,
+    marginVertical: 4,
+  },
+  hallsGrid: {
     gap: 12,
   },
-  card: {
-    backgroundColor: "#ffffff",
+  hallCard: {
+    backgroundColor: colors.surface,
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: "#e2e8f0",
+    borderColor: colors.border,
     padding: 16,
-    shadowColor: "#0f172a",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.04,
-    shadowRadius: 6,
-    elevation: 2,
+    ...shadows.sm,
   },
-  cardTop: {
+  cardHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 8,
+    marginBottom: 6,
   },
-  cardCodeBadge: {
-    backgroundColor: "#eff6ff",
-    borderWidth: 1,
-    borderColor: "#bfdbfe",
-    borderRadius: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 3,
-  },
-  cardCodeText: {
-    fontSize: 14,
-    fontWeight: "800",
-    color: "#1d4ed8",
-  },
-  cardCapBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#f0fdf4",
-    borderWidth: 1,
-    borderColor: "#bbf7d0",
-    borderRadius: 6,
+  hallCodeBadge: {
+    backgroundColor: colors.primaryLight,
     paddingHorizontal: 8,
     paddingVertical: 3,
+    borderRadius: 4,
   },
-  cardCapText: {
-    fontSize: 12,
-    fontWeight: "700",
-    color: "#166534",
-  },
-  cardBuilding: {
+  hallCodeText: {
     fontSize: 13,
-    color: "#475569",
-    marginBottom: 12,
+    fontWeight: typography.weights.bold,
+    color: colors.primaryDark,
+  },
+  hallBuilding: {
+    fontSize: 13,
+    color: colors.textSecondary,
+    marginBottom: 10,
   },
   benchDetailBox: {
     flexDirection: "row",
-    backgroundColor: "#f8fafc",
+    backgroundColor: colors.surfaceAlt,
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: "#e2e8f0",
+    borderColor: colors.border,
     paddingVertical: 10,
-    marginBottom: 12,
+    marginBottom: 10,
   },
-  benchStat: {
+  benchCol: {
     flex: 1,
     alignItems: "center",
   },
-  benchStatNum: {
-    fontSize: 16,
-    fontWeight: "800",
-    color: "#0f172a",
+  benchNum: {
+    fontSize: 15,
+    fontWeight: typography.weights.extrabold,
+    color: colors.text,
   },
-  benchStatLabel: {
+  benchLabel: {
     fontSize: 10,
-    color: "#64748b",
+    color: colors.textMuted,
     marginTop: 2,
+    fontWeight: typography.weights.medium,
   },
-  statDivider: {
+  benchDivider: {
     width: 1,
-    height: "80%",
-    backgroundColor: "#e2e8f0",
-    alignSelf: "center",
+    backgroundColor: colors.border,
   },
-  cardBottomRow: {
+  cardFooter: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
     paddingTop: 8,
     borderTopWidth: 1,
-    borderTopColor: "#f1f5f9",
+    borderTopColor: colors.borderLight,
   },
   statusPill: {
     flexDirection: "row",
@@ -590,13 +495,13 @@ const styles = StyleSheet.create({
     width: 6,
     height: 6,
     borderRadius: 3,
-    backgroundColor: "#16a34a",
+    backgroundColor: colors.success,
     marginRight: 6,
   },
   statusText: {
     fontSize: 11,
-    fontWeight: "600",
-    color: "#16a34a",
+    fontWeight: typography.weights.semibold,
+    color: colors.successText,
   },
   deleteBtn: {
     flexDirection: "row",
@@ -604,12 +509,103 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
     paddingHorizontal: 8,
     borderRadius: 6,
-    backgroundColor: "#fee2e2",
+    backgroundColor: colors.errorLight,
   },
   deleteBtnText: {
     fontSize: 11,
-    fontWeight: "600",
-    color: "#dc2626",
+    fontWeight: typography.weights.semibold,
+    color: colors.errorText,
     marginLeft: 4,
+  },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(15, 23, 42, 0.5)",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 16,
+  },
+  modalCard: {
+    width: "100%",
+    maxWidth: 480,
+    backgroundColor: colors.surface,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: 20,
+    ...shadows.lg,
+  },
+  modalHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    marginBottom: 16,
+  },
+  modalTitle: {
+    fontSize: 16,
+    fontWeight: typography.weights.extrabold,
+    color: colors.text,
+  },
+  modalSub: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    marginTop: 2,
+  },
+  modalForm: {
+    gap: 12,
+  },
+  modalInputGroup: {},
+  modalInputRow: {
+    flexDirection: "row",
+  },
+  modalLabel: {
+    fontSize: 11,
+    fontWeight: typography.weights.bold,
+    color: colors.text,
+    marginBottom: 4,
+  },
+  modalInput: {
+    height: 40,
+    backgroundColor: colors.surfaceAlt,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingHorizontal: 10,
+    fontSize: 13,
+    color: colors.text,
+  },
+  calculatedCallout: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: colors.successLight,
+    borderWidth: 1,
+    borderColor: colors.successBorder,
+    borderRadius: 8,
+    padding: 10,
+  },
+  calloutTitle: {
+    fontSize: 12,
+    fontWeight: typography.weights.semibold,
+    color: colors.successText,
+  },
+  calloutSub: {
+    fontSize: 10,
+    color: colors.success,
+    marginTop: 1,
+  },
+  saveBtn: {
+    height: 44,
+    backgroundColor: colors.primary,
+    borderRadius: 8,
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 8,
+  },
+  btnDisabled: {
+    opacity: 0.65,
+  },
+  saveBtnText: {
+    color: "#FFFFFF",
+    fontSize: 13,
+    fontWeight: typography.weights.bold,
   },
 });

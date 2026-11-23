@@ -1,14 +1,28 @@
 import React, { useState, useEffect, useContext } from "react";
-import { View, Text, StyleSheet, ScrollView, RefreshControl, Pressable } from "react-native";
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  RefreshControl,
+  Pressable,
+  useWindowDimensions,
+} from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { AuthContext } from "../../context/AuthContext";
-import { Header } from "../../components/Header";
+import { Badge } from "../../components/Badge";
 import { LoadingSpinner } from "../../components/LoadingSpinner";
+import { EmptyState } from "../../components/EmptyState";
+import { colors, typography, shadows } from "../../theme/colors";
 import { confirmSignOut } from "../../utils/alerts";
 import api from "../../services/api";
 
 export default function FacultyDutiesScreen({ navigation }) {
   const { user, logout } = useContext(AuthContext);
+  const { width } = useWindowDimensions();
+  const isDesktop = width >= 768;
+
   const [duties, setDuties] = useState([]);
   const [facultyInfo, setFacultyInfo] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -37,71 +51,101 @@ export default function FacultyDutiesScreen({ navigation }) {
     confirmSignOut(logout);
   };
 
-  if (loading) return <LoadingSpinner message="Loading Invigilation Portal..." />;
+  if (loading) return <LoadingSpinner message="Loading your invigilation assignments..." />;
 
   const facultyName = facultyInfo?.full_name || user?.faculty_profile?.full_name || user?.username || "Faculty Member";
   const empId = facultyInfo?.employee_id || user?.faculty_profile?.employee_id || user?.username || "";
   const deptCode = facultyInfo?.department_code || user?.faculty_profile?.department_code || "Faculty";
 
   return (
-    <View style={styles.container}>
-      <Header title="Faculty Invigilation Portal" />
+    <SafeAreaView style={styles.safeArea} edges={["top", "bottom"]}>
+      {/* Top Header */}
+      <View style={styles.topHeader}>
+        <View style={styles.headerLeft}>
+          <View style={styles.logoBadge}>
+            <Ionicons name="school" size={18} color="#FFFFFF" />
+          </View>
+          <View>
+            <Text style={styles.headerTitle}>ExamEase Faculty</Text>
+            <Text style={styles.headerSub}>Invigilation & Exam Hall Portal</Text>
+          </View>
+        </View>
+
+        <Pressable style={styles.logoutHeaderBtn} onPress={handleLogout} hitSlop={8}>
+          <Ionicons name="log-out-outline" size={18} color={colors.error} style={{ marginRight: 4 }} />
+          <Text style={styles.logoutHeaderText}>Sign Out</Text>
+        </Pressable>
+      </View>
 
       <ScrollView
-        contentContainerStyle={styles.scroll}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); fetchDuties(); }} />}
+        contentContainerStyle={[
+          styles.scroll,
+          isDesktop && styles.scrollDesktop,
+        ]}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); fetchDuties(); }} />
+        }
       >
-        {/* Profile Card Center */}
-        <View style={styles.profileSection}>
-          <View style={styles.avatarCircle}>
-            <Ionicons name="person" size={32} color="#2563eb" />
+        {/* Profile Card */}
+        <View style={styles.profileCard}>
+          <View style={styles.avatarRing}>
+            <Text style={styles.avatarLetter}>
+              {facultyName.charAt(0).toUpperCase()}
+            </Text>
           </View>
           <Text style={styles.facultyName}>{facultyName}</Text>
           <Text style={styles.facultyMeta}>
-            Faculty ID: {empId} {deptCode ? `• Dept: ${deptCode}` : ""}
+            Faculty ID: <Text style={{ fontWeight: "700", color: colors.text }}>{empId}</Text> • Dept: {deptCode}
           </Text>
+          <Badge label="VERIFIED INVIGILATOR" variant="info" size="sm" style={{ marginTop: 8 }} />
         </View>
 
         {/* Assigned Duties Section */}
-        <View style={styles.dutiesHeaderRow}>
-          <Text style={styles.dutiesHeading}>Assigned Invigilation Duties</Text>
-          <View style={styles.dutiesCountBadge}>
-            <Text style={styles.dutiesCountText}>{duties.length} DUTIES</Text>
-          </View>
+        <View style={styles.sectionHeaderRow}>
+          <Text style={styles.sectionTitle}>Assigned Invigilation Duties</Text>
+          <Badge
+            label={`${duties.length} DUTIES`}
+            variant={duties.length > 0 ? "success" : "neutral"}
+          />
         </View>
 
         {duties.length > 0 ? (
           duties.map((item, idx) => (
             <View key={item.id || idx} style={styles.dutyCard}>
               <View style={styles.dutyTopRow}>
-                <Text style={styles.dutyCode}>{item.subject_code || "EXAM"}</Text>
-                <View style={styles.assignedBadge}>
-                  <Text style={styles.assignedBadgeText}>{item.status || "ASSIGNED"}</Text>
+                <View style={styles.dutyCodeBadge}>
+                  <Text style={styles.dutyCodeText}>{item.subject_code || "EXAM"}</Text>
                 </View>
+                <Badge label={item.status || "ASSIGNED"} variant="success" size="sm" />
               </View>
 
               <Text style={styles.dutyExamName}>{item.exam_name || "Examination"}</Text>
 
-              <View style={styles.dutyInfoRow}>
-                <Ionicons name="calendar-outline" size={17} color="#0f172a" style={{ marginRight: 8 }} />
-                <Text style={styles.dutyInfoText}>Date: {item.duty_date}</Text>
+              <View style={styles.metaRow}>
+                <Ionicons name="calendar-outline" size={15} color={colors.primary} style={{ marginRight: 6 }} />
+                <Text style={styles.metaText}>
+                  Date: <Text style={{ fontWeight: "700", color: colors.text }}>{item.duty_date}</Text>
+                </Text>
               </View>
 
-              <View style={styles.dutyInfoRow}>
-                <Ionicons name="time-outline" size={17} color="#0f172a" style={{ marginRight: 8 }} />
-                <Text style={styles.dutyInfoText}>
+              <View style={styles.metaRow}>
+                <Ionicons name="time-outline" size={15} color={colors.primary} style={{ marginRight: 6 }} />
+                <Text style={styles.metaText}>
                   Timing: {item.start_time?.slice(0, 5)} - {item.end_time?.slice(0, 5)}
                 </Text>
               </View>
 
               {/* Supervising Hall Box */}
               <View style={styles.supervisingBox}>
-                <Ionicons name="business-outline" size={24} color="#64748b" style={{ marginRight: 10 }} />
+                <Ionicons name="business-outline" size={20} color={colors.textSecondary} style={{ marginRight: 10 }} />
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.supervisingLabel}>Supervising Hall:</Text>
+                  <Text style={styles.supervisingLabel}>Assigned Examination Hall</Text>
                   <Text style={styles.supervisingHallName}>{item.hall_name || "TBA"}</Text>
                   {item.building ? (
-                    <Text style={styles.supervisingHallSub}>Building: {item.building}</Text>
+                    <Text style={styles.supervisingHallSub}>
+                      {item.building} • Floor {item.floor || 1}
+                    </Text>
                   ) : null}
                   {item.hall_capacity ? (
                     <Text style={styles.supervisingHallSub}>
@@ -116,215 +160,211 @@ export default function FacultyDutiesScreen({ navigation }) {
                   style={styles.viewSeatingBtn}
                   onPress={() => navigation.navigate("SeatingPlanDetail", { planId: item.seating_plan_id })}
                 >
-                  <Ionicons name="layers-outline" size={16} color="#1d4ed8" style={{ marginRight: 6 }} />
-                  <Text style={styles.viewSeatingBtnText}>View Hall Seating Arrangement</Text>
+                  <Ionicons name="layers-outline" size={15} color={colors.primary} style={{ marginRight: 6 }} />
+                  <Text style={styles.viewSeatingBtnText}>View Hall Seating Arrangement →</Text>
                 </Pressable>
               ) : null}
             </View>
           ))
         ) : (
-          <View style={styles.emptyCard}>
-            <Ionicons name="clipboard-outline" size={44} color="#94a3b8" />
-            <Text style={styles.emptyTitle}>No Duties Assigned</Text>
-            <Text style={styles.emptySub}>
-              You currently have no invigilation duties scheduled. Any exam duties assigned by the Exam Cell will appear here.
-            </Text>
-          </View>
+          <EmptyState
+            iconName="clipboard-outline"
+            title="No Duties Assigned"
+            message="You currently have no invigilation duties scheduled. Any exam duties assigned by the Exam Cell will appear here."
+          />
         )}
-
-        {/* Sign Out Button */}
-        <Pressable style={styles.signOutBtn} onPress={handleLogout}>
-          <Ionicons name="log-out-outline" size={20} color="#ffffff" style={{ marginRight: 8 }} />
-          <Text style={styles.signOutBtnText}>Sign Out</Text>
-        </Pressable>
       </ScrollView>
-    </View>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  safeArea: {
     flex: 1,
-    backgroundColor: "#ffffff",
+    backgroundColor: colors.background,
+  },
+  topHeader: {
+    height: 58,
+    backgroundColor: colors.surface,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+    paddingHorizontal: 16,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  headerLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  logoBadge: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    backgroundColor: colors.primary,
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 10,
+  },
+  headerTitle: {
+    fontSize: 14,
+    fontWeight: typography.weights.bold,
+    color: colors.text,
+  },
+  headerSub: {
+    fontSize: 10,
+    color: colors.textSecondary,
+    fontWeight: typography.weights.medium,
+  },
+  logoutHeaderBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: colors.errorLight,
+    paddingVertical: 5,
+    paddingHorizontal: 9,
+    borderRadius: 6,
+  },
+  logoutHeaderText: {
+    fontSize: 11,
+    fontWeight: typography.weights.bold,
+    color: colors.errorText,
   },
   scroll: {
     padding: 18,
     paddingBottom: 40,
   },
-  profileSection: {
-    alignItems: "center",
-    marginTop: 12,
-    marginBottom: 26,
+  scrollDesktop: {
+    maxWidth: 680,
+    width: "100%",
+    alignSelf: "center",
   },
-  avatarCircle: {
-    width: 68,
-    height: 68,
-    borderRadius: 34,
-    backgroundColor: "#eff6ff",
+  profileCard: {
+    backgroundColor: colors.surface,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: 20,
+    alignItems: "center",
+    marginBottom: 20,
+    ...shadows.sm,
+  },
+  avatarRing: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: colors.primaryLight,
+    borderWidth: 1,
+    borderColor: colors.primaryMuted,
     alignItems: "center",
     justifyContent: "center",
     marginBottom: 10,
   },
+  avatarLetter: {
+    fontSize: 24,
+    fontWeight: typography.weights.bold,
+    color: colors.primaryDark,
+  },
   facultyName: {
-    fontSize: 20,
-    fontWeight: "800",
-    color: "#0f172a",
-    letterSpacing: -0.3,
+    fontSize: 18,
+    fontWeight: typography.weights.extrabold,
+    color: colors.text,
   },
   facultyMeta: {
-    fontSize: 13,
-    color: "#64748b",
-    marginTop: 4,
-    fontWeight: "500",
+    fontSize: 12,
+    color: colors.textSecondary,
+    marginTop: 2,
   },
-  dutiesHeaderRow: {
+  sectionHeaderRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
     marginBottom: 12,
   },
-  dutiesHeading: {
-    fontSize: 16,
-    fontWeight: "800",
-    color: "#0f172a",
-  },
-  dutiesCountBadge: {
-    backgroundColor: "#e0f2fe",
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 8,
-  },
-  dutiesCountText: {
-    fontSize: 11,
-    fontWeight: "800",
-    color: "#0284c7",
+  sectionTitle: {
+    fontSize: 14,
+    fontWeight: typography.weights.bold,
+    color: colors.text,
   },
   dutyCard: {
-    backgroundColor: "#ffffff",
-    borderRadius: 16,
+    backgroundColor: colors.surface,
+    borderRadius: 14,
     borderWidth: 1,
-    borderColor: "#e2e8f0",
+    borderColor: colors.border,
     padding: 16,
-    marginBottom: 16,
+    marginBottom: 12,
+    ...shadows.sm,
   },
   dutyTopRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-  },
-  dutyCode: {
-    fontSize: 14,
-    fontWeight: "800",
-    color: "#2563eb",
-  },
-  assignedBadge: {
-    backgroundColor: "#dcfce7",
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 6,
-  },
-  assignedBadgeText: {
-    fontSize: 11,
-    fontWeight: "800",
-    color: "#15803d",
-  },
-  dutyExamName: {
-    fontSize: 16,
-    fontWeight: "700",
-    color: "#0f172a",
-    marginTop: 6,
     marginBottom: 8,
   },
-  dutyInfoRow: {
+  dutyCodeBadge: {
+    backgroundColor: colors.primaryLight,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 4,
+  },
+  dutyCodeText: {
+    fontSize: 12,
+    fontWeight: typography.weights.bold,
+    color: colors.primaryDark,
+  },
+  dutyExamName: {
+    fontSize: 15,
+    fontWeight: typography.weights.bold,
+    color: colors.text,
+    marginBottom: 8,
+  },
+  metaRow: {
     flexDirection: "row",
     alignItems: "center",
-    marginTop: 6,
+    marginBottom: 4,
   },
-  dutyInfoText: {
-    fontSize: 13,
-    color: "#0f172a",
-    fontWeight: "500",
+  metaText: {
+    fontSize: 12,
+    color: colors.textSecondary,
   },
   supervisingBox: {
-    backgroundColor: "#f1f5f9",
-    borderRadius: 12,
+    backgroundColor: colors.surfaceAlt,
+    borderRadius: 10,
     padding: 12,
-    marginTop: 14,
+    marginTop: 10,
     flexDirection: "row",
     alignItems: "center",
   },
   supervisingLabel: {
-    fontSize: 11,
-    color: "#64748b",
-    fontWeight: "600",
+    fontSize: 10,
+    color: colors.textMuted,
+    fontWeight: typography.weights.bold,
+    textTransform: "uppercase",
   },
   supervisingHallName: {
     fontSize: 14,
-    fontWeight: "700",
-    color: "#0f172a",
-    marginTop: 2,
+    fontWeight: typography.weights.bold,
+    color: colors.text,
+    marginTop: 1,
   },
   supervisingHallSub: {
     fontSize: 11,
-    color: "#64748b",
+    color: colors.textSecondary,
     marginTop: 1,
-  },
-  supervisingVal: {
-    fontSize: 13,
-    fontWeight: "700",
-    color: "#0f172a",
-    marginTop: 2,
   },
   viewSeatingBtn: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#eff6ff",
+    backgroundColor: colors.primaryLight,
     borderWidth: 1,
-    borderColor: "#bfdbfe",
+    borderColor: colors.primaryMuted,
     borderRadius: 8,
     paddingVertical: 9,
-    marginTop: 10,
+    marginTop: 12,
   },
   viewSeatingBtnText: {
     fontSize: 12,
-    fontWeight: "700",
-    color: "#1d4ed8",
-  },
-  emptyCard: {
-    backgroundColor: "#ffffff",
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: "#e2e8f0",
-    padding: 32,
-    alignItems: "center",
-    marginTop: 12,
-  },
-  emptyTitle: {
-    fontSize: 16,
-    fontWeight: "700",
-    color: "#0f172a",
-    marginTop: 12,
-  },
-  emptySub: {
-    fontSize: 12,
-    color: "#64748b",
-    textAlign: "center",
-    marginTop: 6,
-    lineHeight: 18,
-  },
-  signOutBtn: {
-    backgroundColor: "#ef4444",
-    borderRadius: 12,
-    height: 48,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    marginTop: 20,
-  },
-  signOutBtnText: {
-    color: "#ffffff",
-    fontSize: 15,
-    fontWeight: "700",
+    fontWeight: typography.weights.bold,
+    color: colors.primaryDark,
   },
 });

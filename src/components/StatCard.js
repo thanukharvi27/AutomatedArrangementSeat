@@ -1,19 +1,42 @@
 import React from "react";
 import { View, Text, StyleSheet } from "react-native";
-import { colors, typography } from "../theme/colors";
+import { Ionicons } from "@expo/vector-icons";
+import { colors, typography, shadows } from "../theme/colors";
 
-export const StatCard = ({ title, value, subtitle, color = colors.primary, iconText = "📊" }) => {
+export const StatCard = ({
+  title,
+  value,
+  subtitle,
+  iconName = "bar-chart-outline",
+  iconColor = colors.primary,
+  badgeText,
+  badgeVariant = "success",
+  style,
+}) => {
   return (
-    <View style={[styles.card, { borderLeftColor: color, borderLeftWidth: 4 }]}>
-      <View style={styles.content}>
-        <View style={styles.textContainer}>
-          <Text style={styles.title}>{title}</Text>
-          <Text style={[styles.value, { color }]}>{value ?? 0}</Text>
-          {subtitle ? <Text style={styles.subtitle}>{subtitle}</Text> : null}
+    <View style={[styles.card, style]}>
+      <View style={styles.topRow}>
+        <Text style={styles.title} numberOfLines={1}>
+          {title}
+        </Text>
+        <View style={[styles.iconBox, { backgroundColor: `${iconColor}14` }]}>
+          <Ionicons name={iconName} size={18} color={iconColor} />
         </View>
-        <View style={[styles.iconContainer, { backgroundColor: `${color}15` }]}>
-          <Text style={styles.icon}>{iconText}</Text>
-        </View>
+      </View>
+
+      <Text style={styles.value}>{value ?? 0}</Text>
+
+      <View style={styles.bottomRow}>
+        {subtitle ? (
+          <Text style={styles.subtitle} numberOfLines={1}>
+            {subtitle}
+          </Text>
+        ) : null}
+        {badgeText ? (
+          <View style={styles.badge}>
+            <Text style={styles.badgeText}>{badgeText}</Text>
+          </View>
+        ) : null}
       </View>
     </View>
   );
@@ -22,43 +45,59 @@ export const StatCard = ({ title, value, subtitle, color = colors.primary, iconT
 const styles = StyleSheet.create({
   card: {
     backgroundColor: colors.surface,
-    borderRadius: 12,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: colors.border,
     padding: 16,
-    marginBottom: 12,
-    elevation: 2,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 3,
+    ...shadows.sm,
   },
-  content: {
+  topRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
+    marginBottom: 10,
   },
-  textContainer: { flex: 1 },
   title: {
     fontSize: typography.sizes.xs,
+    fontWeight: typography.weights.bold,
     color: colors.textSecondary,
-    fontWeight: typography.weights.semibold,
     textTransform: "uppercase",
+    letterSpacing: 0.6,
+    flex: 1,
+  },
+  iconBox: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    alignItems: "center",
+    justifyContent: "center",
   },
   value: {
     fontSize: 26,
-    fontWeight: typography.weights.bold,
-    marginTop: 4,
+    fontWeight: typography.weights.extrabold,
+    color: colors.text,
+    letterSpacing: -0.5,
+    marginBottom: 6,
+  },
+  bottomRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
   },
   subtitle: {
     fontSize: typography.sizes.xs,
     color: colors.textMuted,
-    marginTop: 2,
+    fontWeight: typography.weights.medium,
   },
-  iconContainer: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    alignItems: "center",
-    justifyContent: "center",
+  badge: {
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    backgroundColor: colors.successLight,
   },
-  icon: { fontSize: 20 },
+  badgeText: {
+    fontSize: 10,
+    fontWeight: typography.weights.bold,
+    color: colors.successText,
+  },
 });

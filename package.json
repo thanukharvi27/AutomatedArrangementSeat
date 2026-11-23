@@ -4,6 +4,7 @@
   "main": "index.js",
   "scripts": {
     "start": "expo start",
+    "start:all": "start \"ExamEase Backend (Port 5000)\" cmd /k \"cd /d ..\\backend && python run.py\" && expo start",
     "android": "expo run:android",
     "ios": "expo run:ios",
     "web": "expo start --web"

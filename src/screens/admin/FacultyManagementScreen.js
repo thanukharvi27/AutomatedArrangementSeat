@@ -14,7 +14,7 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { colors } from "../../theme/colors";
-import { Header } from "../../components/Header";
+import { ResponsiveLayout } from "../../components/ResponsiveLayout";
 import { LoadingSpinner } from "../../components/LoadingSpinner";
 import { showAlert } from "../../utils/alerts";
 import { facultyApi, departmentApi, examApi, hallApi } from "../../services/api";
@@ -336,12 +336,11 @@ export default function FacultyManagementScreen({ navigation }) {
   if (loading) return <LoadingSpinner message="Loading Faculty & Duties..." />;
 
   return (
-    <View style={styles.container}>
-      <Header
-        title="Faculty & Invigilators"
-        subtitle="Manage faculty roster and exam duties"
-        showBack
-      />
+    <ResponsiveLayout
+      title="Faculty & Invigilators"
+      subtitle="Manage university faculty roster and invigilation duties"
+      currentRouteName="FacultyManagement"
+    >
 
       {/* Segmented Tab Switcher */}
       <View style={styles.tabContainer}>
@@ -1039,7 +1038,7 @@ export default function FacultyManagementScreen({ navigation }) {
           </View>
         </View>
       </Modal>
-    </View>
+    </ResponsiveLayout>
   );
 }
 

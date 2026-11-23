@@ -3,12 +3,12 @@ import * as SecureStore from "expo-secure-store";
 import { Platform } from "react-native";
 import Constants from "expo-constants";
 
-export const HOST_LAN_IP = "172.17.1.130";
+export const HOST_LAN_IP = "172.17.0.195";
 
 export const PRESET_HOSTS = [
+  { label: "Localhost (Browser)", url: "http://localhost:5000/api", desc: "For web browser preview (localhost:8081)" },
   { label: "Wi-Fi LAN (Phone)", url: `http://${HOST_LAN_IP}:5000/api`, desc: "For physical phone on same Wi-Fi" },
   { label: "Android Emulator", url: "http://10.0.2.2:5000/api", desc: "For Android Studio emulator" },
-  { label: "Localhost", url: "http://localhost:5000/api", desc: "For web browser preview" },
 ];
 
 export const getAutoDetectedHost = () => {
@@ -58,29 +58,57 @@ const api = axios.create({
 });
 
 const TOKEN_KEY = "examease_auth_token";
+let inMemoryToken = null;
 
 export const tokenStorage = {
   getToken: async () => {
     try {
-      return await SecureStore.getItemAsync(TOKEN_KEY);
+      if (inMemoryToken) return inMemoryToken;
+      if (Platform.OS === "web") {
+        if (typeof localStorage !== "undefined") {
+          const t = localStorage.getItem(TOKEN_KEY);
+          if (t) {
+            inMemoryToken = t;
+            return t;
+          }
+        }
+        return null;
+      }
+      const t = await SecureStore.getItemAsync(TOKEN_KEY);
+      if (t) inMemoryToken = t;
+      return t;
     } catch {
-      return null;
+      return inMemoryToken;
     }
   },
   saveToken: async (token) => {
+    inMemoryToken = token;
     try {
+      if (Platform.OS === "web") {
+        if (typeof localStorage !== "undefined" && token) {
+          localStorage.setItem(TOKEN_KEY, String(token));
+        }
+        return;
+      }
       if (token) {
         await SecureStore.setItemAsync(TOKEN_KEY, String(token));
       }
     } catch (e) {
-      console.warn("SecureStore error saving token:", e);
+      console.warn("Token storage save error:", e);
     }
   },
   removeToken: async () => {
+    inMemoryToken = null;
     try {
+      if (Platform.OS === "web") {
+        if (typeof localStorage !== "undefined") {
+          localStorage.removeItem(TOKEN_KEY);
+        }
+        return;
+      }
       await SecureStore.deleteItemAsync(TOKEN_KEY);
     } catch (e) {
-      console.warn("SecureStore error deleting token:", e);
+      console.warn("Token storage remove error:", e);
     }
   },
 };
@@ -152,8 +180,11 @@ export const authApi = {
 
 export const studentApi = {
   getAll: (params) => api.get("/students", { params }),
+  getStudent: (id) => api.get(`/students/${id}`),
   create: (data) => api.post("/students", data),
+  update: (id, data) => api.patch(`/students/${id}`, data),
   delete: (id) => api.delete(`/students/${id}`),
+  bulkCreate: (data) => api.post("/students/bulk", data),
 };
 
 export const examApi = {
@@ -208,6 +239,9 @@ export const reportApi = {
 
 export const departmentApi = {
   getAll: () => api.get("/departments"),
+  create: (data) => api.post("/departments", data),
+  update: (id, data) => api.patch(`/departments/${id}`, data),
+  delete: (id) => api.delete(`/departments/${id}`),
 };
 
 export default api;

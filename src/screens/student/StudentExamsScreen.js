@@ -1,11 +1,16 @@
 import React, { useState, useEffect } from "react";
-import { View, Text, StyleSheet, FlatList, RefreshControl } from "react-native";
-import { Header } from "../../components/Header";
+import { View, Text, StyleSheet, FlatList, RefreshControl, useWindowDimensions } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { Badge } from "../../components/Badge";
 import { EmptyState } from "../../components/EmptyState";
 import { LoadingSpinner } from "../../components/LoadingSpinner";
+import { colors, typography, shadows } from "../../theme/colors";
 import api from "../../services/api";
 
 export default function StudentExamsScreen() {
+  const { width } = useWindowDimensions();
+  const isDesktop = width >= 768;
+
   const [exams, setExams] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -31,14 +36,28 @@ export default function StudentExamsScreen() {
   if (loading) return <LoadingSpinner message="Fetching exam registrations..." />;
 
   return (
-    <View style={styles.container}>
-      <Header title="My Exam Schedule" subtitle="Official registered examinations" />
+    <SafeAreaView style={styles.safeArea} edges={["top", "bottom"]}>
+      <View style={styles.topHeader}>
+        <Text style={styles.headerTitle}>My Examination Schedule</Text>
+        <Badge label={`${exams.length} EXAMS`} variant="info" size="sm" />
+      </View>
+
       <FlatList
         data={exams}
         keyExtractor={(item, index) => String(item.id || index)}
-        contentContainerStyle={styles.list}
+        contentContainerStyle={[
+          styles.list,
+          isDesktop && styles.listDesktop,
+        ]}
+        showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); fetchExams(); }} />}
-        ListEmptyComponent={<EmptyState icon="📝" title="No Exams" message="You have no registered examinations." />}
+        ListEmptyComponent={
+          <EmptyState
+            iconName="calendar-outline"
+            title="No Exams Found"
+            message="You have no registered examinations for this academic semester."
+          />
+        }
         renderItem={({ item }) => {
           const hasSeat = Boolean(item.has_seating && item.seat_label && item.seat_label !== "TBA");
           const isPublished = Boolean(item.is_published);
@@ -46,45 +65,66 @@ export default function StudentExamsScreen() {
             <View style={styles.examListCard}>
               <View style={styles.examCardTop}>
                 <Text style={styles.examCardCode}>{item.course_code || item.subject_code}</Text>
-                <View style={[styles.statusBadge, { backgroundColor: hasSeat ? "#dcfce7" : "#fef9c3" }]}>
-                  <Text style={[styles.statusBadgeText, { color: hasSeat ? "#15803d" : "#a16207" }]}>
-                    {hasSeat ? "SEAT ALLOCATED" : isPublished ? "PUBLISHED" : "SCHEDULED"}
-                  </Text>
-                </View>
+                <Badge
+                  label={hasSeat ? "SEAT ALLOCATED" : isPublished ? "PUBLISHED" : "SCHEDULED"}
+                  variant={hasSeat ? "success" : "info"}
+                  size="sm"
+                />
               </View>
               <Text style={styles.examCardTitle}>{item.course_name || item.name}</Text>
               <View style={styles.examCardBottom}>
                 <Text style={styles.examCardDateTime}>
-                  {item.exam_date} • {item.start_time?.slice(0, 5) || "10:00"}
+                  📅 {item.exam_date} • {item.start_time?.slice(0, 5) || "10:00"}
                 </Text>
-                <Text style={[styles.examCardSeatText, { color: hasSeat ? "#15803d" : "#64748b", fontWeight: hasSeat ? "700" : "500" }]}>
-                  {hasSeat ? `Hall ${item.hall_code} • Seat ${item.seat_label}` : "Seating Allocation Pending"}
+                <Text style={[styles.examCardSeatText, { color: hasSeat ? colors.successText : colors.textMuted }]}>
+                  {hasSeat ? `Hall ${item.hall_code} • Seat ${item.seat_label}` : "Seating Pending"}
                 </Text>
               </View>
             </View>
           );
         }}
       />
-    </View>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  safeArea: {
     flex: 1,
-    backgroundColor: "#ffffff",
+    backgroundColor: colors.background,
+  },
+  topHeader: {
+    height: 54,
+    backgroundColor: colors.surface,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+    paddingHorizontal: 16,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  headerTitle: {
+    fontSize: 15,
+    fontWeight: typography.weights.bold,
+    color: colors.text,
   },
   list: {
-    padding: 18,
+    padding: 16,
     paddingBottom: 40,
+    gap: 10,
+  },
+  listDesktop: {
+    maxWidth: 680,
+    width: "100%",
+    alignSelf: "center",
   },
   examListCard: {
-    backgroundColor: "#ffffff",
-    borderRadius: 16,
+    backgroundColor: colors.surface,
+    borderRadius: 12,
     borderWidth: 1,
-    borderColor: "#e2e8f0",
-    padding: 16,
-    marginBottom: 12,
+    borderColor: colors.border,
+    padding: 14,
+    ...shadows.sm,
   },
   examCardTop: {
     flexDirection: "row",
@@ -92,25 +132,16 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   examCardCode: {
-    fontSize: 14,
-    fontWeight: "800",
-    color: "#2563eb",
-  },
-  statusBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 6,
-  },
-  statusBadgeText: {
-    fontSize: 11,
-    fontWeight: "800",
+    fontSize: 12,
+    fontWeight: typography.weights.bold,
+    color: colors.primaryDark,
   },
   examCardTitle: {
-    fontSize: 15,
-    fontWeight: "700",
-    color: "#0f172a",
-    marginTop: 6,
-    marginBottom: 10,
+    fontSize: 14,
+    fontWeight: typography.weights.bold,
+    color: colors.text,
+    marginTop: 4,
+    marginBottom: 8,
   },
   examCardBottom: {
     flexDirection: "row",
@@ -118,12 +149,11 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   examCardDateTime: {
-    fontSize: 12,
-    color: "#64748b",
-    fontWeight: "500",
+    fontSize: 11,
+    color: colors.textSecondary,
   },
   examCardSeatText: {
-    fontSize: 12,
-    fontWeight: "600",
+    fontSize: 11,
+    fontWeight: typography.weights.bold,
   },
 });

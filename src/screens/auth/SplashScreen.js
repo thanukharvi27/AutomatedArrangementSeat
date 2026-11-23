@@ -6,100 +6,85 @@ import {
   Pressable,
   ScrollView,
   StatusBar,
+  useWindowDimensions,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
+import { colors, typography, shadows } from "../../theme/colors";
 
 export default function SplashScreen({ navigation }) {
+  const { width } = useWindowDimensions();
+  const isDesktop = width >= 768;
+
   return (
     <SafeAreaView style={styles.safeArea}>
-      <StatusBar barStyle="light-content" backgroundColor="#0b1528" />
+      <StatusBar barStyle="dark-content" backgroundColor={colors.background} />
 
       <ScrollView
-        contentContainerStyle={styles.scrollContent}
-        bounces={false}
+        contentContainerStyle={[
+          styles.scrollContent,
+          isDesktop && styles.scrollContentDesktop,
+        ]}
         showsVerticalScrollIndicator={false}
       >
-        <View style={styles.mainContainer}>
-          {/* Institutional Badge */}
+        <View style={[styles.mainCard, isDesktop && styles.mainCardDesktop]}>
+          {/* Top Institutional Badge */}
           <View style={styles.institutionBadge}>
-            <Ionicons name="shield-checkmark" size={14} color="#93c5fd" style={{ marginRight: 6 }} />
+            <Ionicons
+              name="shield-checkmark"
+              size={13}
+              color={colors.primary}
+              style={{ marginRight: 6 }}
+            />
             <Text style={styles.institutionBadgeText}>
               CAMPUS EXAMINATION CELL
             </Text>
           </View>
 
           {/* Logo & Emblem */}
-          <View style={styles.logoWrapper}>
-            <View style={styles.logoOuterRing}>
-              <View style={styles.logoInnerCircle}>
-                <Ionicons name="school" size={44} color="#60a5fa" />
-              </View>
+          <View style={styles.logoRing}>
+            <View style={styles.logoInner}>
+              <Ionicons name="school" size={36} color="#FFFFFF" />
             </View>
           </View>
 
-          {/* Brand Titles */}
-          <View style={styles.titleGroup}>
-            <View style={styles.brandRow}>
-              <Text style={styles.brandTitle}>ExamEase</Text>
-              <View style={styles.versionBadge}>
-                <Text style={styles.versionText}>MOBILE</Text>
-              </View>
-            </View>
-            <Text style={styles.brandSubtitle}>
-              Automated Exam Seating Arrangement System
-            </Text>
-            <Text style={styles.brandTagline}>
-              Smart seat allocation, zero department collision & instant mobile USN search.
-            </Text>
-          </View>
+          {/* Title & Tagline */}
+          <Text style={styles.brandTitle}>ExamEase</Text>
+          <Text style={styles.brandSubtitle}>
+            Automated Exam Seating Arrangement System
+          </Text>
+          <Text style={styles.brandTagline}>
+            Intelligent anti-collision seating allocation, hall utilization optimization & instant USN lookup.
+          </Text>
 
-          {/* Feature Highlights */}
-          <View style={styles.featuresContainer}>
-            <View style={styles.featureItem}>
-              <View style={[styles.featureIconBox, { backgroundColor: "rgba(59, 130, 246, 0.15)" }]}>
-                <Ionicons name="flash" size={16} color="#60a5fa" />
-              </View>
-              <View style={styles.featureTextBox}>
-                <Text style={styles.featureTitle}>Auto Allocation Engine</Text>
-                <Text style={styles.featureDesc}>Anti-cheating interleaved seating</Text>
-              </View>
+          {/* Features Grid */}
+          <View style={styles.featuresRow}>
+            <View style={styles.featurePill}>
+              <Ionicons name="flash-outline" size={14} color={colors.primary} style={{ marginRight: 6 }} />
+              <Text style={styles.featurePillText}>Auto Allocation Engine</Text>
             </View>
-
-            <View style={styles.featureItem}>
-              <View style={[styles.featureIconBox, { backgroundColor: "rgba(16, 185, 129, 0.15)" }]}>
-                <Ionicons name="shield-checkmark-outline" size={16} color="#34d399" />
-              </View>
-              <View style={styles.featureTextBox}>
-                <Text style={styles.featureTitle}>Zero Branch Overlap</Text>
-                <Text style={styles.featureDesc}>Automatic room & bench balancing</Text>
-              </View>
+            <View style={styles.featurePill}>
+              <Ionicons name="shield-outline" size={14} color={colors.success} style={{ marginRight: 6 }} />
+              <Text style={styles.featurePillText}>Zero Branch Overlap</Text>
             </View>
-
-            <View style={styles.featureItem}>
-              <View style={[styles.featureIconBox, { backgroundColor: "rgba(168, 85, 247, 0.15)" }]}>
-                <Ionicons name="search" size={16} color="#c084fc" />
-              </View>
-              <View style={styles.featureTextBox}>
-                <Text style={styles.featureTitle}>Instant USN Seat Finder</Text>
-                <Text style={styles.featureDesc}>Quick hall & bench lookup without login</Text>
-              </View>
+            <View style={styles.featurePill}>
+              <Ionicons name="search-outline" size={14} color={colors.info} style={{ marginRight: 6 }} />
+              <Text style={styles.featurePillText}>Instant USN Search</Text>
             </View>
           </View>
 
-          {/* Action Buttons */}
+          {/* Primary Action Buttons */}
           <View style={styles.actionsContainer}>
             <Pressable
               style={({ pressed }) => [
                 styles.primaryBtn,
                 pressed && styles.btnPressed,
               ]}
-              android_ripple={{ color: "#e2e8f0" }}
               onPress={() => navigation.navigate("Login")}
             >
-              <Ionicons name="log-in-outline" size={20} color="#1e3a8a" style={{ marginRight: 8 }} />
-              <Text style={styles.primaryBtnText}>Sign In to Account</Text>
-              <Ionicons name="arrow-forward" size={18} color="#1e3a8a" style={{ marginLeft: 6 }} />
+              <Ionicons name="log-in-outline" size={18} color="#FFFFFF" style={{ marginRight: 8 }} />
+              <Text style={styles.primaryBtnText}>Sign In to Portal</Text>
+              <Ionicons name="arrow-forward" size={16} color="#FFFFFF" style={{ marginLeft: 6 }} />
             </Pressable>
 
             <Pressable
@@ -107,20 +92,17 @@ export default function SplashScreen({ navigation }) {
                 styles.secondaryBtn,
                 pressed && styles.btnPressedSecondary,
               ]}
-              android_ripple={{ color: "rgba(255, 255, 255, 0.15)" }}
               onPress={() => navigation.navigate("PublicFindSeat")}
             >
-              <Ionicons name="search-outline" size={18} color="#ffffff" style={{ marginRight: 8 }} />
+              <Ionicons name="search-outline" size={17} color={colors.text} style={{ marginRight: 8 }} />
               <Text style={styles.secondaryBtnText}>Quick Seat Search (No Login)</Text>
             </Pressable>
           </View>
 
-          {/* Mobile Footer */}
-          <View style={styles.footer}>
-            <Text style={styles.footerText}>
-              College Examination Portal • Academic Year 2025–26
-            </Text>
-          </View>
+          {/* Footer Note */}
+          <Text style={styles.footerText}>
+            ExamEase Enterprise • Academic Year 2025–26
+          </Text>
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -130,190 +112,153 @@ export default function SplashScreen({ navigation }) {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: "#0b1528",
+    backgroundColor: colors.background,
   },
   scrollContent: {
     flexGrow: 1,
     justifyContent: "center",
-    paddingHorizontal: 20,
-    paddingVertical: 24,
-  },
-  mainContainer: {
-    width: "100%",
     alignItems: "center",
+    padding: 20,
+  },
+  scrollContentDesktop: {
+    paddingVertical: 48,
+  },
+  mainCard: {
+    width: "100%",
+    maxWidth: 520,
+    backgroundColor: colors.surface,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: 28,
+    alignItems: "center",
+    ...shadows.md,
+  },
+  mainCardDesktop: {
+    padding: 40,
   },
   institutionBadge: {
     flexDirection: "row",
     alignItems: "center",
     paddingHorizontal: 12,
-    paddingVertical: 6,
+    paddingVertical: 5,
     borderRadius: 20,
-    backgroundColor: "rgba(59, 130, 246, 0.15)",
+    backgroundColor: colors.primaryLight,
     borderWidth: 1,
-    borderColor: "rgba(147, 197, 253, 0.25)",
+    borderColor: colors.primaryMuted,
     marginBottom: 20,
   },
   institutionBadgeText: {
-    fontSize: 11,
-    fontWeight: "700",
-    color: "#bfdbfe",
+    fontSize: 10,
+    fontWeight: typography.weights.bold,
+    color: colors.primaryDark,
     letterSpacing: 0.8,
   },
-  logoWrapper: {
-    marginBottom: 16,
+  logoRing: {
+    width: 76,
+    height: 76,
+    borderRadius: 38,
+    backgroundColor: colors.primaryLight,
     alignItems: "center",
     justifyContent: "center",
+    marginBottom: 18,
+    borderWidth: 1,
+    borderColor: colors.primaryMuted,
   },
-  logoOuterRing: {
-    width: 90,
-    height: 90,
-    borderRadius: 45,
-    backgroundColor: "rgba(59, 130, 246, 0.12)",
-    borderWidth: 1.5,
-    borderColor: "rgba(96, 165, 250, 0.3)",
+  logoInner: {
+    width: 58,
+    height: 58,
+    borderRadius: 29,
+    backgroundColor: colors.primary,
+    alignItems: "center",
     justifyContent: "center",
-    alignItems: "center",
-  },
-  logoInnerCircle: {
-    width: 70,
-    height: 70,
-    borderRadius: 35,
-    backgroundColor: "#1e3a8a",
-    justifyContent: "center",
-    alignItems: "center",
-    elevation: 6,
-    shadowColor: "#3b82f6",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.4,
-    shadowRadius: 12,
-  },
-  titleGroup: {
-    alignItems: "center",
-    marginBottom: 20,
-  },
-  brandRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 4,
+    ...shadows.base,
   },
   brandTitle: {
-    fontSize: 32,
-    fontWeight: "800",
-    color: "#ffffff",
-    letterSpacing: -0.5,
-  },
-  versionBadge: {
-    marginLeft: 8,
-    paddingHorizontal: 7,
-    paddingVertical: 2,
-    borderRadius: 6,
-    backgroundColor: "#2563eb",
-  },
-  versionText: {
-    fontSize: 10,
-    fontWeight: "800",
-    color: "#ffffff",
-    letterSpacing: 0.5,
+    fontSize: 28,
+    fontWeight: typography.weights.extrabold,
+    color: colors.text,
+    letterSpacing: -0.6,
+    marginBottom: 4,
   },
   brandSubtitle: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: "#93c5fd",
+    fontSize: 13,
+    fontWeight: typography.weights.semibold,
+    color: colors.primary,
     textAlign: "center",
-    marginBottom: 6,
+    marginBottom: 8,
   },
   brandTagline: {
     fontSize: 12,
-    color: "#94a3b8",
+    color: colors.textSecondary,
     textAlign: "center",
     lineHeight: 18,
-    paddingHorizontal: 12,
+    marginBottom: 22,
+    paddingHorizontal: 8,
   },
-  featuresContainer: {
+  featuresRow: {
     width: "100%",
-    backgroundColor: "rgba(30, 41, 59, 0.65)",
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.08)",
-    padding: 12,
-    marginBottom: 24,
     gap: 8,
+    marginBottom: 26,
   },
-  featureItem: {
+  featurePill: {
     flexDirection: "row",
     alignItems: "center",
-    paddingVertical: 6,
-    paddingHorizontal: 6,
+    backgroundColor: colors.surfaceAlt,
+    borderRadius: 8,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
   },
-  featureIconBox: {
-    width: 34,
-    height: 34,
-    borderRadius: 10,
-    justifyContent: "center",
-    alignItems: "center",
-    marginRight: 12,
-  },
-  featureTextBox: {
-    flex: 1,
-  },
-  featureTitle: {
-    fontSize: 13,
-    fontWeight: "700",
-    color: "#f1f5f9",
-  },
-  featureDesc: {
-    fontSize: 11,
-    color: "#94a3b8",
-    marginTop: 1,
+  featurePillText: {
+    fontSize: 12,
+    fontWeight: typography.weights.medium,
+    color: colors.text,
   },
   actionsContainer: {
     width: "100%",
-    gap: 12,
+    gap: 10,
+    marginBottom: 20,
   },
   primaryBtn: {
-    height: 52,
-    borderRadius: 12,
-    backgroundColor: "#ffffff",
+    height: 48,
+    backgroundColor: colors.primary,
+    borderRadius: 10,
     flexDirection: "row",
     justifyContent: "center",
     alignItems: "center",
-    elevation: 3,
+    ...shadows.sm,
   },
   primaryBtnText: {
-    fontSize: 15,
-    fontWeight: "700",
-    color: "#1e3a8a",
+    fontSize: 14,
+    fontWeight: typography.weights.bold,
+    color: "#FFFFFF",
   },
   secondaryBtn: {
-    height: 50,
-    borderRadius: 12,
-    backgroundColor: "rgba(255, 255, 255, 0.08)",
+    height: 46,
+    backgroundColor: colors.surfaceAlt,
+    borderRadius: 10,
     borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.22)",
+    borderColor: colors.border,
     flexDirection: "row",
     justifyContent: "center",
     alignItems: "center",
   },
   secondaryBtnText: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: "#ffffff",
+    fontSize: 13,
+    fontWeight: typography.weights.semibold,
+    color: colors.text,
   },
   btnPressed: {
-    opacity: 0.9,
-    transform: [{ scale: 0.98 }],
+    backgroundColor: colors.primaryDark,
   },
   btnPressedSecondary: {
-    backgroundColor: "rgba(255, 255, 255, 0.15)",
-    transform: [{ scale: 0.98 }],
-  },
-  footer: {
-    marginTop: 20,
-    alignItems: "center",
+    backgroundColor: colors.border,
   },
   footerText: {
     fontSize: 11,
-    color: "#64748b",
+    color: colors.textMuted,
     textAlign: "center",
   },
 });

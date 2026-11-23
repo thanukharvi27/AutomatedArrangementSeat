@@ -1,4 +1,4 @@
-import React, { useState, useContext } from "react";
+import React, { useState, useContext, useEffect, useCallback } from "react";
 import {
   View,
   Text,
@@ -10,16 +10,25 @@ import {
   Platform,
   ScrollView,
   StatusBar,
+  useWindowDimensions,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { AuthContext } from "../../context/AuthContext";
-import { colors } from "../../theme/colors";
-import { getApiBaseUrl, setApiBaseUrl, pingBackend, PRESET_HOSTS, HOST_LAN_IP } from "../../services/api";
+import { colors, typography, shadows } from "../../theme/colors";
+import {
+  getApiBaseUrl,
+  setApiBaseUrl,
+  pingBackend,
+  PRESET_HOSTS,
+  HOST_LAN_IP,
+} from "../../services/api";
 import { showAlert } from "../../utils/alerts";
 
 export default function LoginScreen({ navigation }) {
   const { login } = useContext(AuthContext);
+  const { width } = useWindowDimensions();
+  const isDesktop = width >= 768;
 
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -32,6 +41,29 @@ export default function LoginScreen({ navigation }) {
   const [serverUrl, setServerUrl] = useState(getApiBaseUrl());
   const [serverStatusMessage, setServerStatusMessage] = useState("");
   const [testingConnection, setTestingConnection] = useState(false);
+  const [serverOnline, setServerOnline] = useState(null); // null = checking, true = online, false = offline
+
+  const checkHealth = useCallback(async (silent = false) => {
+    try {
+      const res = await pingBackend();
+      if (res.ok) {
+        setServerOnline(true);
+        if (!silent) setServerStatusMessage("Server connected (200 OK)");
+      } else {
+        setServerOnline(false);
+        if (!silent) setServerStatusMessage(`Connection failed: ${res.error}`);
+      }
+    } catch (e) {
+      setServerOnline(false);
+      if (!silent) setServerStatusMessage(`Error: ${e.message}`);
+    }
+  }, []);
+
+  useEffect(() => {
+    checkHealth(true);
+    const interval = setInterval(() => checkHealth(true), 8000);
+    return () => clearInterval(interval);
+  }, [checkHealth]);
 
   const handleTestConnection = async (targetUrl) => {
     const urlToTest = targetUrl || serverUrl;
@@ -40,20 +72,24 @@ export default function LoginScreen({ navigation }) {
     try {
       const res = await pingBackend(urlToTest);
       if (res.ok) {
+        setServerOnline(true);
+        setErrorMessage("");
         setServerStatusMessage("Server connected successfully! (Status 200 OK)");
         showAlert("Server Reachable", `Successfully connected to ExamEase API at:\n${res.url}`);
       } else {
+        setServerOnline(false);
         setServerStatusMessage(`Connection failed: ${res.error}`);
         showAlert(
           "Connection Failed",
-          `Could not connect to ExamEase backend at:\n${res.url}\n\nError: ${res.error}\n\nMake sure Flask is running ('python run.py') on port 5000.`
+          `Could not connect to ExamEase backend at:\n${res.url}\n\nMake sure Flask is running ('python run.py' or RUN_EXAMEASE.bat) on port 5000.`
         );
       }
     } catch (e) {
+      setServerOnline(false);
       setServerStatusMessage(`Error: ${e.message}`);
     } finally {
       setTestingConnection(false);
-      setTimeout(() => setServerStatusMessage(""), 6000);
+      setTimeout(() => setServerStatusMessage(""), 5000);
     }
   };
 
@@ -66,7 +102,6 @@ export default function LoginScreen({ navigation }) {
     if (!trimmedUser || !trimmedPass) {
       const msg = "Please enter both your username/USN and password.";
       setErrorMessage(msg);
-      showAlert("Validation Error", msg);
       return;
     }
 
@@ -78,12 +113,10 @@ export default function LoginScreen({ navigation }) {
       if (!result.success) {
         const errorText = result.message || "Invalid credentials. Please verify your details.";
         setErrorMessage(errorText);
-        showAlert("Sign In Failed", errorText);
       }
     } catch (err) {
       const errorText = err.message || "Could not connect to backend API server. Ensure it is running.";
       setErrorMessage(errorText);
-      showAlert("Connection Error", errorText);
     } finally {
       setSubmitting(false);
     }
@@ -109,22 +142,25 @@ export default function LoginScreen({ navigation }) {
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      <StatusBar barStyle="dark-content" backgroundColor="#f1f5f9" />
+      <StatusBar barStyle="dark-content" backgroundColor={colors.background} />
 
       <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : undefined}
         style={styles.container}
       >
         <ScrollView
-          contentContainerStyle={styles.scrollContainer}
+          contentContainerStyle={[
+            styles.scrollContainer,
+            isDesktop && styles.scrollContainerDesktop,
+          ]}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-          <View style={styles.card}>
-            {/* Mobile Top Navigation & Badge */}
-            <View style={styles.cardHeaderTop}>
+          <View style={[styles.card, isDesktop && styles.cardDesktop]}>
+            {/* Header Nav Row */}
+            <View style={styles.headerNavRow}>
               <Pressable
-                style={({ pressed }) => [styles.backBtn, pressed && styles.pressedOpacity]}
+                style={styles.backBtn}
                 onPress={() => {
                   if (navigation.canGoBack()) {
                     navigation.goBack();
@@ -132,22 +168,21 @@ export default function LoginScreen({ navigation }) {
                     navigation.navigate("Splash");
                   }
                 }}
-                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                accessibilityLabel="Back to Home"
+                hitSlop={8}
               >
-                <Ionicons name="arrow-back" size={18} color="#475569" />
+                <Ionicons name="arrow-back" size={16} color={colors.textSecondary} />
                 <Text style={styles.backBtnText}>Home</Text>
               </Pressable>
 
-              <View style={styles.headerBadge}>
-                <Text style={styles.headerBadgeText}>EXAMEASE MOBILE</Text>
+              <View style={styles.systemTag}>
+                <Text style={styles.systemTagText}>EXAMEASE</Text>
               </View>
             </View>
 
-            {/* Institutional Title & Emblem */}
-            <View style={styles.brandingHeader}>
-              <View style={styles.iconEmblem}>
-                <Ionicons name="school" size={28} color="#1d4ed8" />
+            {/* Logo & Heading */}
+            <View style={styles.brandBlock}>
+              <View style={styles.iconCircle}>
+                <Ionicons name="school" size={26} color={colors.primary} />
               </View>
               <Text style={styles.heading}>Sign In</Text>
               <Text style={styles.subheading}>
@@ -155,70 +190,107 @@ export default function LoginScreen({ navigation }) {
               </Text>
             </View>
 
-            {/* Find My Seat Instant Callout for Students */}
+            {/* Find Seat Callout */}
             <Pressable
-              style={({ pressed }) => [
-                styles.seatFinderBanner,
-                pressed && styles.pressedScale,
-              ]}
-              android_ripple={{ color: "#dcfce7" }}
+              style={styles.seatFinderCallout}
               onPress={() => navigation.navigate("PublicFindSeat")}
             >
-              <View style={styles.seatFinderIconBox}>
-                <Ionicons name="search" size={18} color="#059669" />
+              <View style={styles.seatFinderIcon}>
+                <Ionicons name="search" size={16} color={colors.success} />
               </View>
-              <View style={styles.seatFinderContent}>
+              <View style={styles.seatFinderInfo}>
                 <Text style={styles.seatFinderTitle}>Student Seat Lookup</Text>
-                <Text style={styles.seatFinderSubtitle}>
-                  Find your hall & seat by USN without signing in
-                </Text>
+                <Text style={styles.seatFinderSub}>Find your hall & seat by USN without signing in</Text>
               </View>
-              <Ionicons name="chevron-forward" size={18} color="#059669" />
+              <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
             </Pressable>
 
-            {/* Inline Error Message Banner */}
+            {/* Error Banner */}
             {errorMessage ? (
-              <View style={styles.errorBanner}>
-                <Ionicons name="alert-circle" size={18} color="#dc2626" style={{ marginRight: 8 }} />
-                <Text style={styles.errorBannerText}>{errorMessage}</Text>
+              <View style={styles.errorBox}>
+                <Ionicons name="alert-circle" size={18} color={colors.error} style={{ marginRight: 8, marginTop: 2 }} />
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.errorText}>{errorMessage}</Text>
+                  {errorMessage.includes("Cannot connect") && (
+                    <View style={{ flexDirection: "row", marginTop: 8, gap: 8 }}>
+                      <Pressable
+                        style={{
+                          flexDirection: "row",
+                          alignItems: "center",
+                          backgroundColor: colors.primary,
+                          paddingVertical: 5,
+                          paddingHorizontal: 10,
+                          borderRadius: 6,
+                          alignSelf: "flex-start",
+                        }}
+                        onPress={() => handleTestConnection()}
+                        disabled={testingConnection}
+                      >
+                        {testingConnection ? (
+                          <ActivityIndicator size="small" color="#fff" style={{ marginRight: 4 }} />
+                        ) : (
+                          <Ionicons name="refresh" size={13} color="#fff" style={{ marginRight: 4 }} />
+                        )}
+                        <Text style={{ color: "#fff", fontSize: 11, fontWeight: "600" }}>
+                          {testingConnection ? "Checking..." : "Retry Connection"}
+                        </Text>
+                      </Pressable>
+                      <Pressable
+                        style={{
+                          flexDirection: "row",
+                          alignItems: "center",
+                          backgroundColor: colors.surface,
+                          borderWidth: 1,
+                          borderColor: colors.border,
+                          paddingVertical: 5,
+                          paddingHorizontal: 10,
+                          borderRadius: 6,
+                          alignSelf: "flex-start",
+                        }}
+                        onPress={() => setShowServerConfig(true)}
+                      >
+                        <Ionicons name="settings-outline" size={13} color={colors.text} style={{ marginRight: 4 }} />
+                        <Text style={{ color: colors.text, fontSize: 11, fontWeight: "600" }}>
+                          Change Host
+                        </Text>
+                      </Pressable>
+                    </View>
+                  )}
+                </View>
               </View>
             ) : null}
 
-            {/* Mobile Form */}
+            {/* Form Fields */}
             <View style={styles.form}>
-              {/* Username / USN */}
               <View style={styles.inputGroup}>
-                <View style={styles.labelRow}>
-                  <Ionicons name="person-outline" size={14} color="#475569" style={{ marginRight: 6 }} />
-                  <Text style={styles.label}>Username or Student USN</Text>
+                <Text style={styles.label}>Username or Student USN</Text>
+                <View style={styles.inputWrapper}>
+                  <Ionicons name="person-outline" size={16} color={colors.textMuted} style={styles.inputIcon} />
+                  <TextInput
+                    style={styles.input}
+                    placeholder="e.g. admin, faculty1, or student1"
+                    placeholderTextColor={colors.textMuted}
+                    value={username}
+                    onChangeText={(val) => {
+                      setUsername(val);
+                      setActiveDemo(null);
+                      if (errorMessage) setErrorMessage("");
+                    }}
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    returnKeyType="next"
+                  />
                 </View>
-                <TextInput
-                  style={styles.input}
-                  placeholder="e.g. admin, student1, or 1MS22CS001"
-                  placeholderTextColor="#94a3b8"
-                  value={username}
-                  onChangeText={(val) => {
-                    setUsername(val);
-                    setActiveDemo(null);
-                    if (errorMessage) setErrorMessage("");
-                  }}
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                  returnKeyType="next"
-                />
               </View>
 
-              {/* Password */}
               <View style={styles.inputGroup}>
-                <View style={styles.labelRow}>
-                  <Ionicons name="lock-closed-outline" size={14} color="#475569" style={{ marginRight: 6 }} />
-                  <Text style={styles.label}>Password</Text>
-                </View>
-                <View style={styles.passwordInputWrapper}>
+                <Text style={styles.label}>Password</Text>
+                <View style={styles.inputWrapper}>
+                  <Ionicons name="lock-closed-outline" size={16} color={colors.textMuted} style={styles.inputIcon} />
                   <TextInput
-                    style={styles.passwordInput}
+                    style={styles.input}
                     placeholder="Enter your password"
-                    placeholderTextColor="#94a3b8"
+                    placeholderTextColor={colors.textMuted}
                     value={password}
                     onChangeText={(val) => {
                       setPassword(val);
@@ -231,15 +303,14 @@ export default function LoginScreen({ navigation }) {
                     onSubmitEditing={handleLogin}
                   />
                   <Pressable
-                    style={styles.passwordToggle}
+                    style={styles.eyeBtn}
                     onPress={() => setShowPassword(!showPassword)}
-                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                    accessibilityLabel="Toggle password visibility"
+                    hitSlop={8}
                   >
                     <Ionicons
                       name={showPassword ? "eye-off-outline" : "eye-outline"}
-                      size={20}
-                      color="#64748b"
+                      size={18}
+                      color={colors.textSecondary}
                     />
                   </Pressable>
                 </View>
@@ -247,212 +318,165 @@ export default function LoginScreen({ navigation }) {
 
               {/* Submit Button */}
               <Pressable
-                style={({ pressed }) => [
-                  styles.submitBtn,
-                  submitting && styles.submitBtnDisabled,
-                  pressed && !submitting && styles.pressedScale,
-                ]}
-                android_ripple={{ color: "#1e40af" }}
+                style={[styles.submitBtn, submitting && styles.btnDisabled]}
                 onPress={handleLogin}
                 disabled={submitting}
               >
                 {submitting ? (
                   <View style={styles.loadingRow}>
-                    <ActivityIndicator color="#ffffff" size="small" />
-                    <Text style={[styles.submitBtnText, { marginLeft: 10 }]}>Authenticating...</Text>
+                    <ActivityIndicator color="#FFFFFF" size="small" />
+                    <Text style={[styles.submitBtnText, { marginLeft: 8 }]}>Signing In...</Text>
                   </View>
                 ) : (
                   <View style={styles.loadingRow}>
-                    <Ionicons name="log-in-outline" size={20} color="#ffffff" style={{ marginRight: 8 }} />
+                    <Ionicons name="log-in-outline" size={18} color="#FFFFFF" style={{ marginRight: 6 }} />
                     <Text style={styles.submitBtnText}>Sign In</Text>
                   </View>
                 )}
               </Pressable>
 
-              {/* Quick Demo Credentials */}
+              {/* Demo Account Shortcuts */}
               <View style={styles.demoSection}>
-                <View style={styles.demoHeaderRow}>
-                  <Ionicons name="key-outline" size={14} color="#64748b" style={{ marginRight: 6 }} />
-                  <Text style={styles.demoSectionTitle}>DEMO ACCOUNT SHORTCUTS</Text>
-                </View>
-                <Text style={styles.demoSectionDesc}>
-                  Tap any card to autofill login credentials:
-                </Text>
+                <Text style={styles.demoTitle}>QUICK DEMO SHORTCUTS</Text>
+                <Text style={styles.demoSub}>Tap a role to autofill login credentials:</Text>
 
                 <View style={styles.demoGrid}>
-                  {/* Admin */}
                   <Pressable
-                    style={({ pressed }) => [
-                      styles.demoCard,
-                      styles.demoCardAdmin,
-                      activeDemo === "admin" && styles.demoCardActiveAdmin,
-                      pressed && styles.pressedOpacity,
+                    style={[
+                      styles.demoPill,
+                      activeDemo === "admin" && styles.demoPillActive,
                     ]}
-                    android_ripple={{ color: "#dbeafe" }}
                     onPress={() => fillDemo("admin", "Admin@123", "admin")}
                   >
-                    <View style={[styles.demoBadgeIcon, { backgroundColor: "#dbeafe" }]}>
-                      <Ionicons name="shield-checkmark" size={14} color="#1d4ed8" />
-                    </View>
-                    <Text style={styles.demoRoleTitle}>Admin</Text>
-                    <Text style={styles.demoRoleUser}>admin</Text>
+                    <Ionicons name="shield-checkmark" size={13} color={colors.primary} />
+                    <Text style={styles.demoRole}>Admin</Text>
+                    <Text style={styles.demoUser}>admin</Text>
                   </Pressable>
 
-                  {/* Faculty */}
                   <Pressable
-                    style={({ pressed }) => [
-                      styles.demoCard,
-                      styles.demoCardFaculty,
-                      activeDemo === "faculty" && styles.demoCardActiveFaculty,
-                      pressed && styles.pressedOpacity,
+                    style={[
+                      styles.demoPill,
+                      activeDemo === "faculty" && styles.demoPillActive,
                     ]}
-                    android_ripple={{ color: "#ede9fe" }}
                     onPress={() => fillDemo("faculty1", "Faculty@123", "faculty")}
                   >
-                    <View style={[styles.demoBadgeIcon, { backgroundColor: "#ede9fe" }]}>
-                      <Ionicons name="briefcase" size={14} color="#7c3aed" />
-                    </View>
-                    <Text style={styles.demoRoleTitle}>Faculty</Text>
-                    <Text style={styles.demoRoleUser}>faculty1</Text>
+                    <Ionicons name="briefcase" size={13} color="#7C3AED" />
+                    <Text style={styles.demoRole}>Faculty</Text>
+                    <Text style={styles.demoUser}>faculty1</Text>
                   </Pressable>
 
-                  {/* Student */}
                   <Pressable
-                    style={({ pressed }) => [
-                      styles.demoCard,
-                      styles.demoCardStudent,
-                      activeDemo === "student" && styles.demoCardActiveStudent,
-                      pressed && styles.pressedOpacity,
+                    style={[
+                      styles.demoPill,
+                      activeDemo === "student" && styles.demoPillActive,
                     ]}
-                    android_ripple={{ color: "#d1fae5" }}
                     onPress={() => fillDemo("student1", "Student@123", "student")}
                   >
-                    <View style={[styles.demoBadgeIcon, { backgroundColor: "#d1fae5" }]}>
-                      <Ionicons name="school" size={14} color="#059669" />
-                    </View>
-                    <Text style={styles.demoRoleTitle}>Student</Text>
-                    <Text style={styles.demoRoleUser}>student1</Text>
+                    <Ionicons name="school" size={13} color={colors.success} />
+                    <Text style={styles.demoRole}>Student</Text>
+                    <Text style={styles.demoUser}>student1</Text>
                   </Pressable>
                 </View>
               </View>
 
-              {/* Server Endpoint Settings Pill */}
+              {/* Server Host Pill */}
               <View style={styles.serverSection}>
                 <Pressable
-                  style={styles.serverStatusPill}
+                  style={styles.serverPill}
                   onPress={() => setShowServerConfig(!showServerConfig)}
                 >
-                  <View style={styles.serverStatusDot} />
-                  <Text style={styles.serverStatusText} numberOfLines={1}>
-                    API: {serverUrl}
+                  <View
+                    style={[
+                      styles.serverDot,
+                      {
+                        backgroundColor:
+                          serverOnline === true
+                            ? colors.success
+                            : serverOnline === false
+                            ? colors.error
+                            : colors.warning,
+                      },
+                    ]}
+                  />
+                  <Text style={styles.serverPillText} numberOfLines={1}>
+                    {serverOnline === true
+                      ? `API Online: ${serverUrl}`
+                      : serverOnline === false
+                      ? `API Offline: ${serverUrl}`
+                      : `API Checking: ${serverUrl}`}
                   </Text>
                   <Ionicons
                     name={showServerConfig ? "chevron-up" : "chevron-down"}
-                    size={14}
-                    color="#64748b"
-                    style={{ marginLeft: 6 }}
+                    size={12}
+                    color={colors.textSecondary}
+                    style={{ marginLeft: 4 }}
                   />
                 </Pressable>
 
                 {showServerConfig && (
-                  <View style={styles.serverConfigCard}>
-                    <Text style={styles.serverConfigTitle}>Backend API Host</Text>
+                  <View style={styles.serverDrawer}>
+                    <Text style={styles.drawerTitle}>Backend API Host Configuration</Text>
                     <TextInput
                       style={styles.serverInput}
                       value={serverUrl}
                       onChangeText={setServerUrl}
-                      placeholder="http://10.0.2.2:5000/api"
-                      placeholderTextColor="#94a3b8"
+                      placeholder="http://localhost:5000/api"
+                      placeholderTextColor={colors.textMuted}
                       autoCapitalize="none"
-                      autoCorrect={false}
                     />
 
-                    {/* Quick Preset Buttons */}
-                    <Text style={styles.presetsLabel}>Quick Switch Host:</Text>
-                    <View style={styles.serverPresetsRow}>
-                      {PRESET_HOSTS.map((preset, idx) => {
-                        const isSelected = serverUrl === preset.url;
-                        return (
-                          <Pressable
-                            key={idx}
+                    <Text style={styles.drawerSub}>Quick Presets:</Text>
+                    <View style={styles.presetRow}>
+                      {PRESET_HOSTS.map((preset, idx) => (
+                        <Pressable
+                          key={idx}
+                          style={[
+                            styles.presetChip,
+                            serverUrl === preset.url && styles.presetChipActive,
+                          ]}
+                          onPress={() => {
+                            setServerUrl(preset.url);
+                            setApiBaseUrl(preset.url);
+                            setServerStatusMessage(`Switched to ${preset.label}`);
+                            setTimeout(() => setServerStatusMessage(""), 2500);
+                          }}
+                        >
+                          <Text
                             style={[
-                              styles.presetChip,
-                              isSelected && styles.presetChipActive,
+                              styles.presetChipText,
+                              serverUrl === preset.url && styles.presetChipTextActive,
                             ]}
-                            onPress={() => {
-                              setServerUrl(preset.url);
-                              setApiBaseUrl(preset.url);
-                              setServerStatusMessage(`Switched to ${preset.label}`);
-                              setTimeout(() => setServerStatusMessage(""), 2500);
-                            }}
                           >
-                            <Text
-                              style={[
-                                styles.presetChipText,
-                                isSelected && styles.presetChipTextActive,
-                              ]}
-                            >
-                              {preset.label}
-                            </Text>
-                          </Pressable>
-                        );
-                      })}
+                            {preset.label}
+                          </Text>
+                        </Pressable>
+                      ))}
                     </View>
 
-                    <View style={styles.serverConfigActions}>
-                      <Pressable
-                        style={styles.serverSaveBtn}
-                        onPress={handleSaveServerUrl}
-                      >
-                        <Text style={styles.serverSaveBtnText}>Save</Text>
+                    <View style={styles.drawerActions}>
+                      <Pressable style={styles.saveHostBtn} onPress={handleSaveServerUrl}>
+                        <Text style={styles.saveHostBtnText}>Save</Text>
                       </Pressable>
-
                       <Pressable
-                        style={[styles.serverTestBtn, testingConnection && styles.btnDisabled]}
+                        style={[styles.testHostBtn, testingConnection && styles.btnDisabled]}
                         onPress={() => handleTestConnection()}
                         disabled={testingConnection}
                       >
                         {testingConnection ? (
-                          <ActivityIndicator size="small" color="#1e3a8a" />
+                          <ActivityIndicator size="small" color={colors.primary} />
                         ) : (
-                          <Text style={styles.serverTestBtnText}>Test Server</Text>
+                          <Text style={styles.testHostBtnText}>Test Server</Text>
                         )}
-                      </Pressable>
-
-                      <Pressable
-                        style={styles.serverResetBtn}
-                        onPress={() => {
-                          const defaultUrl = getApiBaseUrl();
-                          setServerUrl(defaultUrl);
-                          setApiBaseUrl(defaultUrl);
-                          setServerStatusMessage("Reset to auto-detected URL");
-                          setTimeout(() => setServerStatusMessage(""), 3000);
-                        }}
-                      >
-                        <Text style={styles.serverResetBtnText}>Auto</Text>
                       </Pressable>
                     </View>
 
                     {serverStatusMessage ? (
-                      <Text style={styles.serverSuccessMsg}>{serverStatusMessage}</Text>
+                      <Text style={styles.serverStatusNote}>{serverStatusMessage}</Text>
                     ) : null}
-
-                    <Text style={styles.serverHelpText}>
-                      • Android Emulator: 10.0.2.2:5000/api{"\n"}
-                      • Physical Android Phone: {HOST_LAN_IP}:5000/api (same Wi-Fi){"\n"}
-                      • Web Preview: localhost:5000/api
-                    </Text>
                   </View>
                 )}
               </View>
             </View>
-          </View>
-
-          {/* Footer */}
-          <View style={styles.pageFooter}>
-            <Text style={styles.pageFooterText}>
-              ExamEase Mobile • Automated Exam Seating System
-            </Text>
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -463,7 +487,7 @@ export default function LoginScreen({ navigation }) {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: "#f1f5f9",
+    backgroundColor: colors.background,
   },
   container: {
     flex: 1,
@@ -471,134 +495,131 @@ const styles = StyleSheet.create({
   scrollContainer: {
     flexGrow: 1,
     justifyContent: "center",
-    paddingHorizontal: 16,
-    paddingVertical: 18,
+    alignItems: "center",
+    padding: 16,
+  },
+  scrollContainerDesktop: {
+    paddingVertical: 36,
   },
   card: {
     width: "100%",
-    backgroundColor: "#ffffff",
-    borderRadius: 20,
+    maxWidth: 440,
+    backgroundColor: colors.surface,
+    borderRadius: 18,
     borderWidth: 1,
-    borderColor: "#e2e8f0",
-    paddingHorizontal: 20,
-    paddingTop: 18,
-    paddingBottom: 24,
-    elevation: 4,
+    borderColor: colors.border,
+    padding: 24,
+    ...shadows.md,
   },
-  cardHeaderTop: {
+  cardDesktop: {
+    padding: 30,
+  },
+  headerNavRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 14,
+    marginBottom: 16,
   },
   backBtn: {
     flexDirection: "row",
     alignItems: "center",
-    paddingVertical: 6,
-    paddingHorizontal: 10,
-    borderRadius: 8,
-    backgroundColor: "#f8fafc",
-    borderWidth: 1,
-    borderColor: "#e2e8f0",
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    borderRadius: 6,
+    backgroundColor: colors.surfaceAlt,
   },
   backBtnText: {
     fontSize: 12,
-    fontWeight: "600",
-    color: "#475569",
+    fontWeight: typography.weights.semibold,
+    color: colors.textSecondary,
     marginLeft: 4,
   },
-  headerBadge: {
-    paddingVertical: 3,
-    paddingHorizontal: 8,
-    borderRadius: 6,
-    backgroundColor: "#eff6ff",
-    borderWidth: 1,
-    borderColor: "#bfdbfe",
+  systemTag: {
+    paddingVertical: 2,
+    paddingHorizontal: 7,
+    borderRadius: 4,
+    backgroundColor: colors.primaryLight,
   },
-  headerBadgeText: {
-    fontSize: 10,
-    fontWeight: "800",
-    color: "#1d4ed8",
-    letterSpacing: 0.6,
+  systemTagText: {
+    fontSize: 9,
+    fontWeight: typography.weights.bold,
+    color: colors.primary,
+    letterSpacing: 0.8,
   },
-  brandingHeader: {
+  brandBlock: {
     alignItems: "center",
-    marginBottom: 16,
+    marginBottom: 18,
   },
-  iconEmblem: {
-    width: 52,
-    height: 52,
-    borderRadius: 16,
-    backgroundColor: "#eff6ff",
-    borderWidth: 1.5,
-    borderColor: "#bfdbfe",
+  iconCircle: {
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+    backgroundColor: colors.primaryLight,
+    alignItems: "center",
     justifyContent: "center",
-    alignItems: "center",
     marginBottom: 10,
   },
   heading: {
-    fontSize: 24,
-    fontWeight: "800",
-    color: "#0f172a",
+    fontSize: 22,
+    fontWeight: typography.weights.extrabold,
+    color: colors.text,
     letterSpacing: -0.4,
     marginBottom: 4,
   },
   subheading: {
-    fontSize: 13,
-    color: "#64748b",
+    fontSize: 12,
+    color: colors.textSecondary,
     textAlign: "center",
-    lineHeight: 18,
-    paddingHorizontal: 12,
+    lineHeight: 16,
   },
-  seatFinderBanner: {
+  seatFinderCallout: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#f0fdf4",
+    backgroundColor: colors.successLight,
+    borderRadius: 10,
     borderWidth: 1,
-    borderColor: "#bbf7d0",
-    borderRadius: 12,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
+    borderColor: colors.successBorder,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
     marginBottom: 14,
   },
-  seatFinderIconBox: {
-    width: 32,
-    height: 32,
-    borderRadius: 8,
-    backgroundColor: "#dcfce7",
-    justifyContent: "center",
+  seatFinderIcon: {
+    width: 28,
+    height: 28,
+    borderRadius: 6,
+    backgroundColor: "#FFFFFF",
     alignItems: "center",
+    justifyContent: "center",
     marginRight: 10,
   },
-  seatFinderContent: {
+  seatFinderInfo: {
     flex: 1,
   },
   seatFinderTitle: {
-    fontSize: 13,
-    fontWeight: "700",
-    color: "#166534",
+    fontSize: 12,
+    fontWeight: typography.weights.bold,
+    color: colors.successText,
   },
-  seatFinderSubtitle: {
-    fontSize: 11,
-    color: "#15803d",
+  seatFinderSub: {
+    fontSize: 10,
+    color: colors.success,
     marginTop: 1,
   },
-  errorBanner: {
+  errorBox: {
     flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#fef2f2",
+    alignItems: "flex-start",
+    backgroundColor: colors.errorLight,
+    borderRadius: 8,
     borderWidth: 1,
-    borderColor: "#fecaca",
-    borderRadius: 10,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
+    borderColor: colors.errorBorder,
+    padding: 10,
     marginBottom: 14,
   },
-  errorBannerText: {
+  errorText: {
     flex: 1,
     fontSize: 12,
-    fontWeight: "600",
-    color: "#b91c1c",
+    fontWeight: typography.weights.medium,
+    color: colors.errorText,
     lineHeight: 16,
   },
   form: {
@@ -607,58 +628,45 @@ const styles = StyleSheet.create({
   inputGroup: {
     marginBottom: 14,
   },
-  labelRow: {
-    flexDirection: "row",
-    alignItems: "center",
+  label: {
+    fontSize: 12,
+    fontWeight: typography.weights.semibold,
+    color: colors.text,
     marginBottom: 6,
   },
-  label: {
-    fontSize: 13,
-    fontWeight: "600",
-    color: "#334155",
-  },
-  input: {
-    height: 48,
-    borderWidth: 1,
-    borderColor: "#cbd5e1",
-    borderRadius: 10,
-    paddingHorizontal: 14,
-    fontSize: 14,
-    color: "#0f172a",
-    backgroundColor: "#f8fafc",
-  },
-  passwordInputWrapper: {
+  inputWrapper: {
     flexDirection: "row",
     alignItems: "center",
-    height: 48,
+    height: 44,
+    backgroundColor: colors.surfaceAlt,
+    borderRadius: 8,
     borderWidth: 1,
-    borderColor: "#cbd5e1",
-    borderRadius: 10,
-    backgroundColor: "#f8fafc",
-    paddingHorizontal: 14,
+    borderColor: colors.border,
+    paddingHorizontal: 10,
   },
-  passwordInput: {
+  inputIcon: {
+    marginRight: 8,
+  },
+  input: {
     flex: 1,
     height: "100%",
-    fontSize: 14,
-    color: "#0f172a",
+    fontSize: 13,
+    color: colors.text,
   },
-  passwordToggle: {
-    padding: 6,
-    justifyContent: "center",
-    alignItems: "center",
+  eyeBtn: {
+    padding: 4,
   },
   submitBtn: {
-    height: 50,
-    backgroundColor: "#1e3a8a",
-    borderRadius: 10,
+    height: 46,
+    backgroundColor: colors.primary,
+    borderRadius: 8,
     justifyContent: "center",
     alignItems: "center",
-    marginTop: 6,
-    elevation: 3,
+    marginTop: 4,
+    ...shadows.sm,
   },
-  submitBtnDisabled: {
-    opacity: 0.7,
+  btnDisabled: {
+    opacity: 0.65,
   },
   loadingRow: {
     flexDirection: "row",
@@ -666,249 +674,177 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   submitBtnText: {
-    color: "#ffffff",
-    fontSize: 15,
-    fontWeight: "700",
+    fontSize: 14,
+    fontWeight: typography.weights.bold,
+    color: "#FFFFFF",
   },
   demoSection: {
-    marginTop: 20,
+    marginTop: 18,
     paddingTop: 14,
     borderTopWidth: 1,
-    borderTopColor: "#e2e8f0",
+    borderTopColor: colors.borderLight,
   },
-  demoHeaderRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 4,
-  },
-  demoSectionTitle: {
-    fontSize: 11,
-    fontWeight: "700",
-    color: "#64748b",
+  demoTitle: {
+    fontSize: 10,
+    fontWeight: typography.weights.bold,
+    color: colors.textMuted,
     letterSpacing: 0.6,
   },
-  demoSectionDesc: {
+  demoSub: {
     fontSize: 11,
-    color: "#94a3b8",
-    marginBottom: 10,
+    color: colors.textSecondary,
+    marginTop: 2,
+    marginBottom: 8,
   },
   demoGrid: {
     flexDirection: "row",
     gap: 8,
   },
-  demoCard: {
+  demoPill: {
     flex: 1,
-    paddingVertical: 10,
-    paddingHorizontal: 4,
-    borderRadius: 10,
+    backgroundColor: colors.surfaceAlt,
+    borderRadius: 8,
     borderWidth: 1,
+    borderColor: colors.border,
+    paddingVertical: 8,
+    paddingHorizontal: 4,
     alignItems: "center",
   },
-  demoCardAdmin: {
-    backgroundColor: "#f8fafc",
-    borderColor: "#e2e8f0",
+  demoPillActive: {
+    backgroundColor: colors.primaryLight,
+    borderColor: colors.primary,
   },
-  demoCardActiveAdmin: {
-    backgroundColor: "#eff6ff",
-    borderColor: "#3b82f6",
+  demoRole: {
+    fontSize: 11,
+    fontWeight: typography.weights.bold,
+    color: colors.text,
+    marginTop: 3,
   },
-  demoCardFaculty: {
-    backgroundColor: "#f8fafc",
-    borderColor: "#e2e8f0",
-  },
-  demoCardActiveFaculty: {
-    backgroundColor: "#f5f3ff",
-    borderColor: "#8b5cf6",
-  },
-  demoCardStudent: {
-    backgroundColor: "#f8fafc",
-    borderColor: "#e2e8f0",
-  },
-  demoCardActiveStudent: {
-    backgroundColor: "#ecfdf5",
-    borderColor: "#10b981",
-  },
-  demoBadgeIcon: {
-    width: 24,
-    height: 24,
-    borderRadius: 6,
-    justifyContent: "center",
-    alignItems: "center",
-    marginBottom: 4,
-  },
-  demoRoleTitle: {
-    fontSize: 12,
-    fontWeight: "700",
-    color: "#1e293b",
-  },
-  demoRoleUser: {
+  demoUser: {
     fontSize: 10,
-    color: "#64748b",
+    color: colors.textMuted,
     marginTop: 1,
   },
   serverSection: {
-    marginTop: 16,
+    marginTop: 14,
     alignItems: "center",
   },
-  serverStatusPill: {
+  serverPill: {
     flexDirection: "row",
     alignItems: "center",
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    borderRadius: 20,
-    backgroundColor: "#f1f5f9",
+    backgroundColor: colors.surfaceAlt,
+    paddingVertical: 5,
+    paddingHorizontal: 10,
+    borderRadius: 14,
     borderWidth: 1,
-    borderColor: "#e2e8f0",
-    maxWidth: "100%",
+    borderColor: colors.border,
   },
-  serverStatusDot: {
-    width: 7,
-    height: 7,
-    borderRadius: 4,
-    backgroundColor: "#10b981",
+  serverDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: colors.success,
     marginRight: 6,
   },
-  serverStatusText: {
+  serverPillText: {
     fontSize: 11,
-    fontWeight: "500",
-    color: "#64748b",
-    flexShrink: 1,
+    color: colors.textSecondary,
+    fontWeight: typography.weights.medium,
   },
-  serverConfigCard: {
+  serverDrawer: {
     width: "100%",
-    backgroundColor: "#f8fafc",
+    backgroundColor: colors.surfaceAlt,
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: "#e2e8f0",
+    borderColor: colors.border,
     padding: 12,
-    marginTop: 10,
+    marginTop: 8,
   },
-  serverConfigTitle: {
+  drawerTitle: {
     fontSize: 11,
-    fontWeight: "700",
-    color: "#475569",
+    fontWeight: typography.weights.bold,
+    color: colors.text,
     marginBottom: 6,
   },
   serverInput: {
     height: 38,
+    backgroundColor: colors.surface,
+    borderRadius: 6,
     borderWidth: 1,
-    borderColor: "#cbd5e1",
-    borderRadius: 8,
+    borderColor: colors.border,
     paddingHorizontal: 10,
     fontSize: 12,
-    color: "#0f172a",
-    backgroundColor: "#ffffff",
+    color: colors.text,
+    marginBottom: 8,
   },
-  presetsLabel: {
+  drawerSub: {
     fontSize: 10,
-    fontWeight: "600",
-    color: "#64748b",
-    marginTop: 8,
+    fontWeight: typography.weights.semibold,
+    color: colors.textSecondary,
     marginBottom: 4,
   },
-  serverPresetsRow: {
+  presetRow: {
     flexDirection: "row",
     flexWrap: "wrap",
     gap: 6,
     marginBottom: 8,
   },
   presetChip: {
-    paddingHorizontal: 8,
     paddingVertical: 4,
-    borderRadius: 6,
-    backgroundColor: "#e2e8f0",
+    paddingHorizontal: 8,
+    borderRadius: 4,
+    backgroundColor: colors.surface,
     borderWidth: 1,
-    borderColor: "#cbd5e1",
+    borderColor: colors.border,
   },
   presetChipActive: {
-    backgroundColor: "#dbeafe",
-    borderColor: "#2563eb",
+    backgroundColor: colors.primaryLight,
+    borderColor: colors.primary,
   },
   presetChipText: {
     fontSize: 10,
-    color: "#475569",
-    fontWeight: "500",
+    color: colors.textSecondary,
   },
   presetChipTextActive: {
-    color: "#1d4ed8",
-    fontWeight: "700",
+    color: colors.primary,
+    fontWeight: typography.weights.bold,
   },
-  serverConfigActions: {
+  drawerActions: {
     flexDirection: "row",
     gap: 8,
-    marginTop: 6,
   },
-  serverSaveBtn: {
+  saveHostBtn: {
     flex: 1,
+    backgroundColor: colors.primary,
     height: 32,
     borderRadius: 6,
-    backgroundColor: "#1e3a8a",
-    justifyContent: "center",
     alignItems: "center",
+    justifyContent: "center",
   },
-  serverSaveBtnText: {
-    color: "#ffffff",
+  saveHostBtnText: {
+    color: "#FFFFFF",
     fontSize: 11,
-    fontWeight: "700",
+    fontWeight: typography.weights.bold,
   },
-  serverTestBtn: {
-    flex: 1.2,
-    height: 32,
-    borderRadius: 6,
-    backgroundColor: "#e0e7ff",
+  testHostBtn: {
+    flex: 1,
+    backgroundColor: colors.surface,
     borderWidth: 1,
-    borderColor: "#c7d2fe",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  serverTestBtnText: {
-    color: "#1e3a8a",
-    fontSize: 11,
-    fontWeight: "700",
-  },
-  btnDisabled: {
-    opacity: 0.6,
-  },
-  serverResetBtn: {
+    borderColor: colors.border,
     height: 32,
-    paddingHorizontal: 12,
     borderRadius: 6,
-    backgroundColor: "#e2e8f0",
-    justifyContent: "center",
     alignItems: "center",
+    justifyContent: "center",
   },
-  serverResetBtnText: {
-    color: "#475569",
+  testHostBtnText: {
+    color: colors.text,
     fontSize: 11,
-    fontWeight: "600",
+    fontWeight: typography.weights.semibold,
   },
-  serverSuccessMsg: {
+  serverStatusNote: {
     fontSize: 11,
-    color: "#059669",
-    fontWeight: "600",
+    color: colors.success,
     marginTop: 6,
     textAlign: "center",
-  },
-  serverHelpText: {
-    fontSize: 10,
-    color: "#94a3b8",
-    marginTop: 8,
-    lineHeight: 14,
-    textAlign: "center",
-  },
-  pageFooter: {
-    marginTop: 16,
-    alignItems: "center",
-  },
-  pageFooterText: {
-    fontSize: 11,
-    color: "#94a3b8",
-    textAlign: "center",
-  },
-  pressedScale: {
-    transform: [{ scale: 0.98 }],
-  },
-  pressedOpacity: {
-    opacity: 0.7,
   },
 });
