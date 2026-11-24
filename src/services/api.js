@@ -3,11 +3,16 @@ import * as SecureStore from "expo-secure-store";
 import { Platform } from "react-native";
 import Constants from "expo-constants";
 
-export const HOST_LAN_IP = "172.17.0.195";
+let generatedNetworkConfig = null;
+try {
+  generatedNetworkConfig = require("../config/network-config.json");
+} catch {}
+
+export const HOST_LAN_IP = generatedNetworkConfig?.hostLanIp || "172.17.4.15";
 
 export const PRESET_HOSTS = [
   { label: "Localhost (Browser)", url: "http://localhost:5000/api", desc: "For web browser preview (localhost:8081)" },
-  { label: "Wi-Fi LAN (Phone)", url: `http://${HOST_LAN_IP}:5000/api`, desc: "For physical phone on same Wi-Fi" },
+  { label: "Wi-Fi LAN (Phone)", url: `http://${HOST_LAN_IP}:5000/api`, desc: `For physical phone on same Wi-Fi (${HOST_LAN_IP})` },
   { label: "Android Emulator", url: "http://10.0.2.2:5000/api", desc: "For Android Studio emulator" },
 ];
 
@@ -15,7 +20,11 @@ export const getAutoDetectedHost = () => {
   // 1. Web preview in browser: use actual hostname
   if (Platform.OS === "web") {
     if (typeof window !== "undefined" && window?.location?.hostname) {
-      return `http://${window.location.hostname}:5000/api`;
+      const hostname = window.location.hostname;
+      if (hostname === "localhost" || hostname === "127.0.0.1") {
+        return "http://localhost:5000/api";
+      }
+      return `http://${hostname}:5000/api`;
     }
     return "http://localhost:5000/api";
   }
@@ -30,13 +39,14 @@ export const getAutoDetectedHost = () => {
     }
   }
 
-  // 3. Android Emulator uses 10.0.2.2 loopback
-  if (Platform.OS === "android") {
+  // 3. Android Emulator (not a physical device): uses 10.0.2.2 loopback
+  if (Platform.OS === "android" && !Constants.isDevice) {
     return "http://10.0.2.2:5000/api";
   }
 
-  // 4. Default fallback to LAN IP or localhost
-  return `http://${HOST_LAN_IP}:5000/api`;
+  // 4. Default fallback to dynamic LAN IP
+  const activeIp = generatedNetworkConfig?.hostLanIp || HOST_LAN_IP;
+  return `http://${activeIp}:5000/api`;
 };
 
 const DEFAULT_URL = getAutoDetectedHost();

@@ -48,6 +48,7 @@ export default function LoginScreen({ navigation }) {
       const res = await pingBackend();
       if (res.ok) {
         setServerOnline(true);
+        setErrorMessage((prev) => (prev && prev.includes("Cannot connect") ? "" : prev));
         if (!silent) setServerStatusMessage("Server connected (200 OK)");
       } else {
         setServerOnline(false);

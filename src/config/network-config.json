@@ -1,0 +1,8 @@
+{
+  "hostLanIp": "172.17.4.15",
+  "port": 5000,
+  "apiBaseUrl": "http://172.17.4.15:5000/api",
+  "localhostUrl": "http://localhost:5000/api",
+  "emulatorUrl": "http://10.0.2.2:5000/api",
+  "updatedAt": "2026-11-24T16:57:55.197Z"
+}

@@ -3,6 +3,9 @@
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
+    "prestart": "node scripts/ensure-backend.js",
+    "preweb": "node scripts/ensure-backend.js",
+    "preandroid": "node scripts/ensure-backend.js",
     "start": "expo start",
     "start:all": "start \"ExamEase Backend (Port 5000)\" cmd /k \"cd /d ..\\backend && python run.py\" && expo start",
     "android": "expo run:android",
