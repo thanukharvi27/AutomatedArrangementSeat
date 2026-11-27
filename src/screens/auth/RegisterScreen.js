@@ -1,30 +1,32 @@
 import React from "react";
-import { View, Text, Pressable, StyleSheet, ScrollView } from "react-native";
+import { View, Text, StyleSheet, ScrollView } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { colors } from "../../theme/colors";
+import { colors, textStyles, spacing, radii, shadows } from "../../theme/tokens";
+import { Button } from "../../components/common/Button";
+import { FadeIn } from "../../components/common/Motion";
 
 export default function RegisterScreen({ navigation }) {
   return (
     <ScrollView contentContainerStyle={styles.container}>
-      <View style={styles.card}>
+      <FadeIn delay={60} style={styles.card}>
         <View style={styles.iconCircle}>
-          <Ionicons name="information-circle-outline" size={36} color={colors.primary} />
+          <Ionicons name="information-circle-outline" size={32} color={colors.primary} />
         </View>
-        <Text style={styles.title}>Account Registration</Text>
+        <Text style={styles.title}>Account Provisioning</Text>
         <Text style={styles.subtitle}>
           Student, Faculty, and Staff accounts are centrally provisioned by the Examination Management Cell.
         </Text>
         <Text style={styles.note}>
-          If you are an enrolled student or assigned faculty member and have not received your credentials, please contact your department coordinator.
+          If you are an enrolled student or assigned faculty member and have not received your credentials, please contact your department coordinator or campus examination administrator.
         </Text>
-        <Pressable
-          style={({ pressed }) => [styles.btn, pressed && { opacity: 0.85 }]}
+        <Button
+          title="Back to Sign In"
+          variant="primary"
+          size="md"
           onPress={() => navigation.navigate("Login")}
-        >
-          <Ionicons name="arrow-back" size={16} color="#ffffff" style={{ marginRight: 6 }} />
-          <Text style={styles.btnText}>Back to Sign In</Text>
-        </Pressable>
-      </View>
+          icon={<Ionicons name="arrow-back" size={16} color={colors.textInverse} />}
+        />
+      </FadeIn>
     </ScrollView>
   );
 }
@@ -34,65 +36,49 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     justifyContent: "center",
     alignItems: "center",
-    padding: 24,
+    padding: spacing.lg,
     backgroundColor: colors.background,
   },
   card: {
     width: "100%",
-    maxWidth: 460,
-    backgroundColor: "#ffffff",
-    borderRadius: 20,
+    maxWidth: 480,
+    backgroundColor: colors.surface,
+    borderRadius: radii.xl,
     borderWidth: 1,
     borderColor: colors.border,
-    padding: 32,
+    padding: spacing.xl,
     alignItems: "center",
-    shadowColor: "#0f172a",
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.08,
-    shadowRadius: 16,
-    elevation: 4,
+    ...shadows.md,
   },
   iconCircle: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    backgroundColor: "#eff6ff",
+    width: 60,
+    height: 60,
+    borderRadius: radii.full,
+    backgroundColor: colors.primaryLight,
+    borderWidth: 1,
+    borderColor: colors.primaryMuted,
     justifyContent: "center",
     alignItems: "center",
-    marginBottom: 16,
+    marginBottom: spacing.md,
   },
   title: {
-    fontSize: 22,
-    fontWeight: "700",
+    ...textStyles.heading,
     color: colors.text,
-    marginBottom: 8,
+    marginBottom: spacing.xs,
     textAlign: "center",
   },
   subtitle: {
-    fontSize: 14,
+    ...textStyles.body,
     color: colors.textSecondary,
-    marginBottom: 12,
+    marginBottom: spacing.md,
     textAlign: "center",
-    lineHeight: 20,
+    lineHeight: 22,
   },
   note: {
-    fontSize: 12,
+    ...textStyles.caption,
     color: colors.textMuted,
-    marginBottom: 24,
+    marginBottom: spacing.xl,
     textAlign: "center",
     lineHeight: 18,
-  },
-  btn: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-    backgroundColor: colors.primary,
-    borderRadius: 10,
-  },
-  btnText: {
-    color: "#ffffff",
-    fontWeight: "700",
-    fontSize: 14,
   },
 });

@@ -1,24 +1,25 @@
-import React, { useState, useEffect, useContext } from "react";
+import React, { useState, useEffect, useContext, useCallback } from "react";
 import {
   View,
   Text,
   StyleSheet,
   ScrollView,
   RefreshControl,
-  Pressable,
   useWindowDimensions,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
-import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
+import { Ionicons } from "@expo/vector-icons";
 import { AuthContext } from "../../context/AuthContext";
-import { Badge } from "../../components/Badge";
-import { LoadingSpinner } from "../../components/LoadingSpinner";
-import { colors, typography, shadows } from "../../theme/colors";
-import { confirmSignOut } from "../../utils/alerts";
+import { AppLayout } from "../../components/layout/AppLayout";
+import { Card } from "../../components/common/Card";
+import { Button } from "../../components/common/Button";
+import { EmptyState } from "../../components/common/EmptyState";
+import { LoadingSkeleton } from "../../components/common/LoadingSkeleton";
+import { FadeIn, Touchable } from "../../components/common/Motion";
+import { colors, textStyles, spacing, radii, shadows, tones } from "../../theme/tokens";
 import api from "../../services/api";
 
 export default function StudentHomeScreen({ navigation }) {
-  const { user, logout } = useContext(AuthContext);
+  const { user } = useContext(AuthContext);
   const { width } = useWindowDimensions();
   const isDesktop = width >= 768;
 
@@ -28,13 +29,14 @@ export default function StudentHomeScreen({ navigation }) {
   const [upcomingExams, setUpcomingExams] = useState([]);
   const [studentDetails, setStudentDetails] = useState(null);
 
-  const fetchDashboard = async () => {
+  const fetchDashboard = useCallback(async () => {
     try {
       const res = await api.get("/student/dashboard");
-      if (res.data?.success) {
-        setNextAllocation(res.data.next_exam);
-        setUpcomingExams(res.data.upcoming_exams || []);
-        setStudentDetails(res.data.student);
+      const data = res.data || res;
+      if (data.success) {
+        setNextAllocation(data.next_exam || null);
+        setUpcomingExams(data.upcoming_exams || []);
+        setStudentDetails(data.student || null);
       }
     } catch (err) {
       console.log("Error loading student dashboard:", err?.message);
@@ -42,41 +44,58 @@ export default function StudentHomeScreen({ navigation }) {
       setLoading(false);
       setRefreshing(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     fetchDashboard();
-  }, []);
+  }, [fetchDashboard]);
 
-  const handleLogout = () => {
-    confirmSignOut(logout);
-  };
+  const displayName =
+    studentDetails?.full_name ||
+    user?.student_profile?.full_name ||
+    user?.full_name ||
+    user?.username ||
+    "Student";
 
-  if (loading) return <LoadingSpinner message="Loading your examination schedule..." />;
+  const displayUsn =
+    studentDetails?.usn ||
+    user?.student_profile?.usn ||
+    user?.username ||
+    "";
 
-  const displayName = studentDetails?.full_name || user?.student_profile?.full_name || user?.username || "Student";
-  const displayUsn = studentDetails?.usn || user?.student_profile?.usn || user?.username || "";
+  const deptName =
+    studentDetails?.department_name ||
+    user?.student_profile?.department_name ||
+    "Engineering";
+
+  const semVal =
+    studentDetails?.semester ||
+    user?.student_profile?.semester ||
+    "";
+
+  // Check if seat is actually allocated (not just placeholder "TBA")
+  const hasSeat = Boolean(
+    nextAllocation &&
+    nextAllocation.has_seating &&
+    nextAllocation.seat_label &&
+    nextAllocation.seat_label !== "TBA"
+  );
 
   return (
-    <SafeAreaView style={styles.safeArea} edges={["top", "bottom"]}>
-      {/* Top Header */}
-      <View style={styles.topHeader}>
-        <View style={styles.headerLeft}>
-          <View style={styles.logoBadge}>
-            <Ionicons name="school" size={18} color="#FFFFFF" />
-          </View>
-          <View>
-            <Text style={styles.headerTitle}>ExamEase Candidate</Text>
-            <Text style={styles.headerSub}>Student Examination Portal</Text>
-          </View>
-        </View>
-
-        <Pressable style={styles.logoutBtn} onPress={handleLogout} hitSlop={8}>
-          <Ionicons name="log-out-outline" size={18} color={colors.error} style={{ marginRight: 4 }} />
-          <Text style={styles.logoutText}>Sign Out</Text>
-        </Pressable>
-      </View>
-
+    <AppLayout
+      title="Student Portal"
+      subtitle={`Welcome, ${displayName}`}
+      currentRouteName="StudentHome"
+      actions={
+        <Button
+          title="Find Seat"
+          variant="secondary"
+          size="sm"
+          onPress={() => navigation.navigate("PublicFindSeat")}
+          icon={<Ionicons name="search-outline" size={14} color={colors.text} />}
+        />
+      }
+    >
       <ScrollView
         contentContainerStyle={[
           styles.scroll,
@@ -84,345 +103,530 @@ export default function StudentHomeScreen({ navigation }) {
         ]}
         showsVerticalScrollIndicator={false}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); fetchDashboard(); }} />
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => {
+              setRefreshing(true);
+              fetchDashboard();
+            }}
+          />
         }
       >
-        {/* Welcome Block */}
-        <View style={styles.welcomeBlock}>
-          <Text style={styles.welcomeSub}>Welcome back,</Text>
-          <Text style={styles.studentName}>{displayName}</Text>
-          <Text style={styles.usnText}>
-            USN: <Text style={{ fontWeight: "700", color: colors.primaryDark }}>{displayUsn}</Text>
-          </Text>
-        </View>
-
-        {/* Featured Upcoming Exam Card */}
-        {nextAllocation ? (
-          <View style={styles.featuredCard}>
-            <View style={styles.featuredHeader}>
-              <View style={styles.featuredTag}>
-                <Ionicons name="calendar-outline" size={16} color={colors.primary} style={{ marginRight: 6 }} />
-                <Text style={styles.featuredTagText}>NEXT UPCOMING EXAMINATION</Text>
-              </View>
-              <Badge label="ALLOCATED" variant="success" size="sm" />
-            </View>
-
-            <Text style={styles.examTitle}>{nextAllocation.exam_name}</Text>
-            <Text style={styles.examSubCode}>
-              {nextAllocation.subject_code} • {nextAllocation.department_name || "Engineering"}
-            </Text>
-
-            <View style={styles.metaRow}>
-              <Text style={styles.metaText}>📅 Date: <Text style={{ fontWeight: "700", color: colors.text }}>{nextAllocation.exam_date}</Text></Text>
-              <Text style={styles.metaText}>⏰ Time: {nextAllocation.start_time} - {nextAllocation.end_time}</Text>
-            </View>
-
-            {/* Allocated Seat Highlight Box */}
-            <View style={styles.seatHighlightBox}>
-              <View style={styles.seatIconBox}>
-                <MaterialCommunityIcons name="seat" size={20} color={colors.success} />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.seatBoxLabel}>OFFICIAL SEAT ALLOCATION</Text>
-                <Text style={styles.seatBoxVal}>
-                  {nextAllocation.hall_name} • Seat {nextAllocation.seat_label}
-                </Text>
-                <Text style={styles.seatBoxSub}>
-                  {nextAllocation.building || "Academic Block"} (Floor {nextAllocation.floor || 1})
+        {/* Student Profile Quick Banner */}
+        <FadeIn delay={50}>
+          <Card style={styles.profileBanner}>
+            <View style={styles.profileRow}>
+              <View style={styles.avatarCircle}>
+                <Text style={styles.avatarText}>
+                  {displayName.charAt(0).toUpperCase()}
                 </Text>
               </View>
-            </View>
-          </View>
-        ) : (
-          <View style={styles.featuredCard}>
-            <View style={styles.featuredHeader}>
-              <View style={styles.featuredTag}>
-                <Ionicons name="calendar-outline" size={16} color={colors.primary} style={{ marginRight: 6 }} />
-                <Text style={styles.featuredTagText}>SCHEDULED EXAMINATION</Text>
-              </View>
-              <Badge label="SCHEDULED" variant="info" size="sm" />
-            </View>
-            <Text style={styles.examTitle}>Database Management Systems</Text>
-            <Text style={styles.examSubCode}>21CS51-DBMS (Computer Science)</Text>
-            <View style={styles.metaRow}>
-              <Text style={styles.metaText}>📅 Date: <Text style={{ fontWeight: "700", color: colors.text }}>2026-11-04</Text></Text>
-              <Text style={styles.metaText}>⏰ Time: 10:00 - 13:00</Text>
-            </View>
-            <View style={styles.seatHighlightBox}>
-              <View style={styles.seatIconBox}>
-                <MaterialCommunityIcons name="seat" size={20} color={colors.success} />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.seatBoxLabel}>OFFICIAL SEAT ALLOCATION</Text>
-                <Text style={styles.seatBoxVal}>LH-101 • Seat A1</Text>
-                <Text style={styles.seatBoxSub}>Main Academic Block (Floor 1)</Text>
-              </View>
-            </View>
-          </View>
-        )}
-
-        {/* Schedule Header Row */}
-        <View style={styles.scheduleHeaderRow}>
-          <Text style={styles.scheduleTitle}>Registered Exam Schedule</Text>
-          <Pressable onPress={() => navigation.navigate("StudentExams")}>
-            <Text style={styles.seeAllText}>View All →</Text>
-          </Pressable>
-        </View>
-
-        {/* Exam Cards */}
-        {upcomingExams.length > 0 ? (
-          upcomingExams.map((exam, idx) => {
-            const isPublished = exam.has_seating || idx === 0;
-            return (
-              <View key={exam.id || idx} style={styles.examListCard}>
-                <View style={styles.examCardTop}>
-                  <Text style={styles.examCardCode}>{exam.course_code || "EXAM"}</Text>
-                  <Badge
-                    label={isPublished ? "SEAT ALLOCATED" : "SCHEDULED"}
-                    variant={isPublished ? "success" : "info"}
-                    size="sm"
-                  />
-                </View>
-                <Text style={styles.examCardTitle}>{exam.course_name || exam.name}</Text>
-                <View style={styles.examCardBottom}>
-                  <Text style={styles.examCardDateTime}>
-                    📅 {exam.exam_date} • {exam.start_time?.slice(0, 5) || "10:00"}
-                  </Text>
-                  <Text style={[styles.examCardSeatText, { color: isPublished ? colors.successText : colors.textMuted }]}>
-                    {isPublished ? `Hall ${exam.hall_code || "LH-101"} • Seat ${exam.seat_label || "A1"}` : "Seating Pending"}
-                  </Text>
+              <View style={styles.profileInfo}>
+                <Text style={styles.studentName}>{displayName}</Text>
+                <View style={styles.badgeRow}>
+                  <View style={styles.usnChip}>
+                    <Text style={styles.usnChipText}>USN: {displayUsn}</Text>
+                  </View>
+                  <View style={styles.deptChip}>
+                    <Text style={styles.deptChipText}>{deptName}</Text>
+                  </View>
+                  {semVal ? (
+                    <View style={styles.semChip}>
+                      <Text style={styles.semChipText}>Sem {semVal}</Text>
+                    </View>
+                  ) : null}
                 </View>
               </View>
-            );
-          })
-        ) : (
-          <View style={styles.examListCard}>
-            <View style={styles.examCardTop}>
-              <Text style={styles.examCardCode}>21CS51-DBMS</Text>
-              <Badge label="SEAT ALLOCATED" variant="success" size="sm" />
             </View>
-            <Text style={styles.examCardTitle}>Database Management Systems</Text>
-            <View style={styles.examCardBottom}>
-              <Text style={styles.examCardDateTime}>📅 2026-11-04 • 10:00</Text>
-              <Text style={[styles.examCardSeatText, { color: colors.successText }]}>LH-101 • Seat A1</Text>
-            </View>
+          </Card>
+        </FadeIn>
+
+        {loading ? (
+          <View style={{ gap: spacing.md, marginTop: spacing.md }}>
+            <LoadingSkeleton height={180} />
+            <LoadingSkeleton height={120} />
           </View>
+        ) : (
+          <>
+            {/* Featured Next Examination Hero Card */}
+            <FadeIn delay={100}>
+              <Card style={styles.nextExamCard}>
+                <View style={styles.nextExamHeader}>
+                  <View style={styles.tagGroup}>
+                    <View style={styles.calIconChip}>
+                      <Ionicons name="calendar-outline" size={14} color={colors.primary} />
+                    </View>
+                    <Text style={styles.nextExamTag}>NEXT UPCOMING EXAMINATION</Text>
+                  </View>
+                  <View
+                    style={[
+                      styles.statusPill,
+                      {
+                        backgroundColor: hasSeat ? colors.pastelMint : colors.pastelBlue,
+                        borderColor: hasSeat ? colors.successBorder : colors.primaryMuted,
+                      },
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.statusPillText,
+                        { color: hasSeat ? colors.successText : colors.primaryDark },
+                      ]}
+                    >
+                      {hasSeat ? "SEAT ASSIGNED" : "SCHEDULED"}
+                    </Text>
+                  </View>
+                </View>
+
+                {nextAllocation ? (
+                  <View style={styles.examDetails}>
+                    <Text style={styles.examTitle}>
+                      {nextAllocation.exam_name || nextAllocation.name}
+                    </Text>
+                    <Text style={styles.examSubtitle}>
+                      {nextAllocation.subject_code || nextAllocation.course_code} • {nextAllocation.department_name || deptName}
+                    </Text>
+
+                    <View style={styles.metaRow}>
+                      <View style={styles.metaItem}>
+                        <Ionicons name="calendar" size={14} color={colors.textSecondary} />
+                        <Text style={styles.metaLabel}>Date:</Text>
+                        <Text style={styles.metaValue}>{nextAllocation.exam_date}</Text>
+                      </View>
+                      <View style={styles.metaItem}>
+                        <Ionicons name="time-outline" size={14} color={colors.textSecondary} />
+                        <Text style={styles.metaLabel}>Time:</Text>
+                        <Text style={styles.metaValue}>
+                          {nextAllocation.start_time?.slice(0, 5)} - {nextAllocation.end_time?.slice(0, 5)}
+                        </Text>
+                      </View>
+                    </View>
+
+                    {/* Seat allocation hero box */}
+                    {hasSeat ? (
+                      <View style={styles.seatBox}>
+                        <View style={styles.seatBadgeCol}>
+                          <Text style={styles.seatBadgeLabel}>YOUR SEAT</Text>
+                          <Text style={styles.seatBadgeNumber}>{nextAllocation.seat_label}</Text>
+                        </View>
+                        <View style={styles.seatDivider} />
+                        <View style={styles.seatInfoCol}>
+                          <Text style={styles.hallName}>{nextAllocation.hall_name}</Text>
+                          <Text style={styles.hallLocation}>
+                            {nextAllocation.building || "Examination Block"} • Floor {nextAllocation.floor ?? 1}
+                          </Text>
+                          <Text style={styles.hallNotice}>
+                            Report to examination hall 15 minutes prior to scheduled start time.
+                          </Text>
+                        </View>
+                      </View>
+                    ) : (
+                      <View style={styles.pendingSeatBox}>
+                        <Ionicons name="time" size={18} color={colors.warning} />
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.pendingSeatTitle}>Seating Allocation Pending</Text>
+                          <Text style={styles.pendingSeatSub}>
+                            The seating plan for this examination has not been published yet. Check back soon.
+                          </Text>
+                        </View>
+                      </View>
+                    )}
+                  </View>
+                ) : (
+                  <View style={styles.emptyExamBox}>
+                    <Ionicons name="checkmark-circle-outline" size={28} color={colors.success} />
+                    <Text style={styles.emptyExamTitle}>No Pending Examinations</Text>
+                    <Text style={styles.emptyExamSub}>
+                      You currently have no scheduled or unassigned examinations in this academic term.
+                    </Text>
+                  </View>
+                )}
+              </Card>
+            </FadeIn>
+
+            {/* Upcoming Registered Exams Roster */}
+            <FadeIn delay={150}>
+              <View style={styles.sectionHeaderRow}>
+                <Text style={styles.sectionTitle}>Registered Exams</Text>
+                <Button
+                  title="View All"
+                  variant="ghost"
+                  size="sm"
+                  onPress={() => navigation.navigate("StudentExams")}
+                />
+              </View>
+
+              {upcomingExams.length === 0 ? (
+                <EmptyState
+                  iconName="calendar-outline"
+                  title="No Registered Exams"
+                  message="No upcoming examination schedule was found for your registration record."
+                />
+              ) : (
+                <View style={styles.examList}>
+                  {upcomingExams.map((exam, idx) => {
+                    const examHasSeat = Boolean(
+                      exam.has_seating && exam.seat_label && exam.seat_label !== "TBA"
+                    );
+                    return (
+                      <Touchable
+                        key={exam.id || idx}
+                        style={styles.examItemCard}
+                        onPress={() => navigation.navigate("StudentExams")}
+                      >
+                        <View style={styles.examItemTop}>
+                          <Text style={styles.examCode}>
+                            {exam.subject_code || exam.course_code}
+                          </Text>
+                          <View
+                            style={[
+                              styles.examMiniPill,
+                              {
+                                backgroundColor: examHasSeat ? colors.pastelMint : colors.surfaceAlt,
+                                borderColor: examHasSeat ? colors.successBorder : colors.border,
+                              },
+                            ]}
+                          >
+                            <Text
+                              style={[
+                                styles.examMiniPillText,
+                                { color: examHasSeat ? colors.successText : colors.textSecondary },
+                              ]}
+                            >
+                              {examHasSeat ? `Seat ${exam.seat_label}` : "Seating Pending"}
+                            </Text>
+                          </View>
+                        </View>
+                        <Text style={styles.examName} numberOfLines={1}>
+                          {exam.exam_name || exam.name}
+                        </Text>
+                        <View style={styles.examItemBottom}>
+                          <Text style={styles.examDateText}>
+                            📅 {exam.exam_date} • {exam.start_time?.slice(0, 5)}
+                          </Text>
+                          {examHasSeat && (
+                            <Text style={styles.examHallText}>
+                              {exam.hall_name || `Hall ${exam.hall_code}`}
+                            </Text>
+                          )}
+                        </View>
+                      </Touchable>
+                    );
+                  })}
+                </View>
+              )}
+            </FadeIn>
+          </>
         )}
       </ScrollView>
-    </SafeAreaView>
+    </AppLayout>
   );
 }
 
 const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: colors.background,
-  },
-  topHeader: {
-    height: 56,
-    backgroundColor: colors.surface,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-    paddingHorizontal: 16,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
-  headerLeft: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  logoBadge: {
-    width: 32,
-    height: 32,
-    borderRadius: 8,
-    backgroundColor: colors.primary,
-    alignItems: "center",
-    justifyContent: "center",
-    marginRight: 10,
-  },
-  headerTitle: {
-    fontSize: 14,
-    fontWeight: typography.weights.bold,
-    color: colors.text,
-  },
-  headerSub: {
-    fontSize: 10,
-    color: colors.textSecondary,
-    fontWeight: typography.weights.medium,
-  },
-  logoutBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: colors.errorLight,
-    paddingVertical: 5,
-    paddingHorizontal: 9,
-    borderRadius: 6,
-  },
-  logoutText: {
-    fontSize: 11,
-    fontWeight: typography.weights.bold,
-    color: colors.errorText,
-  },
   scroll: {
-    padding: 18,
-    paddingBottom: 40,
+    padding: spacing.md,
+    paddingBottom: spacing["3xl"],
+    gap: spacing.lg,
   },
   scrollDesktop: {
-    maxWidth: 680,
+    maxWidth: 900,
     width: "100%",
     alignSelf: "center",
+    padding: spacing.xl,
   },
-  welcomeBlock: {
-    marginBottom: 16,
+  profileBanner: {
+    padding: spacing.lg,
+    backgroundColor: colors.surface,
   },
-  welcomeSub: {
-    fontSize: 12,
-    color: colors.textSecondary,
+  profileRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.md,
+  },
+  avatarCircle: {
+    width: 52,
+    height: 52,
+    borderRadius: radii.full,
+    backgroundColor: colors.primaryLight,
+    borderWidth: 1,
+    borderColor: colors.primaryMuted,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  avatarText: {
+    ...textStyles.heading,
+    color: colors.primaryDark,
+  },
+  profileInfo: {
+    flex: 1,
   },
   studentName: {
-    fontSize: 22,
-    fontWeight: typography.weights.extrabold,
+    ...textStyles.title,
     color: colors.text,
-    letterSpacing: -0.4,
+    fontSize: 18,
+    marginBottom: 4,
   },
-  usnText: {
-    fontSize: 13,
+  badgeRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: spacing.xs,
+  },
+  usnChip: {
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 3,
+    borderRadius: radii.sm,
+    backgroundColor: colors.surfaceAlt,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  usnChipText: {
+    ...textStyles.caption,
+    fontWeight: "700",
+    color: colors.primaryDark,
+  },
+  deptChip: {
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 3,
+    borderRadius: radii.sm,
+    backgroundColor: colors.surfaceAlt,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  deptChipText: {
+    ...textStyles.caption,
     color: colors.textSecondary,
-    marginTop: 2,
   },
-  featuredCard: {
-    backgroundColor: colors.surface,
-    borderRadius: 16,
-    borderWidth: 1.5,
-    borderColor: colors.primary,
-    padding: 18,
-    marginBottom: 20,
-    ...shadows.sm,
+  semChip: {
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 3,
+    borderRadius: radii.sm,
+    backgroundColor: colors.pastelLavender,
+    borderWidth: 1,
+    borderColor: colors.accentLight,
   },
-  featuredHeader: {
+  semChipText: {
+    ...textStyles.caption,
+    color: colors.accent,
+    fontWeight: "600",
+  },
+  nextExamCard: {
+    padding: spacing.xl,
+  },
+  nextExamHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 8,
+    marginBottom: spacing.md,
   },
-  featuredTag: {
+  tagGroup: {
     flexDirection: "row",
     alignItems: "center",
+    gap: spacing.xs,
   },
-  featuredTagText: {
+  calIconChip: {
+    width: 26,
+    height: 26,
+    borderRadius: radii.sm,
+    backgroundColor: colors.primaryLight,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  nextExamTag: {
+    ...textStyles.overline,
+    color: colors.primaryDark,
+    letterSpacing: 0.8,
+  },
+  statusPill: {
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 3,
+    borderRadius: radii.full,
+    borderWidth: 1,
+  },
+  statusPillText: {
+    ...textStyles.overline,
     fontSize: 10,
-    fontWeight: typography.weights.bold,
-    color: colors.primary,
-    letterSpacing: 0.6,
+    fontWeight: "700",
+  },
+  examDetails: {
+    gap: spacing.sm,
   },
   examTitle: {
-    fontSize: 18,
-    fontWeight: typography.weights.bold,
+    ...textStyles.heading,
+    fontSize: 20,
     color: colors.text,
   },
-  examSubCode: {
-    fontSize: 12,
+  examSubtitle: {
+    ...textStyles.subtitle,
     color: colors.textSecondary,
-    marginTop: 2,
-    marginBottom: 10,
   },
   metaRow: {
     flexDirection: "row",
-    justifyContent: "space-between",
-    marginBottom: 12,
+    flexWrap: "wrap",
+    gap: spacing.lg,
+    paddingVertical: spacing.sm,
   },
-  metaText: {
-    fontSize: 12,
-    color: colors.textSecondary,
+  metaItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
   },
-  seatHighlightBox: {
-    backgroundColor: colors.successLight,
+  metaLabel: {
+    ...textStyles.caption,
+    color: colors.textMuted,
+  },
+  metaValue: {
+    ...textStyles.body,
+    fontWeight: "600",
+    color: colors.text,
+  },
+  seatBox: {
+    flexDirection: "row",
+    backgroundColor: colors.pastelMint,
+    borderRadius: radii.lg,
     borderWidth: 1,
     borderColor: colors.successBorder,
-    borderRadius: 10,
-    padding: 12,
-    flexDirection: "row",
+    padding: spacing.lg,
+    marginTop: spacing.sm,
     alignItems: "center",
+    gap: spacing.lg,
   },
-  seatIconBox: {
-    width: 36,
-    height: 36,
-    borderRadius: 8,
-    backgroundColor: "#FFFFFF",
+  seatBadgeCol: {
     alignItems: "center",
     justifyContent: "center",
-    marginRight: 10,
+    minWidth: 80,
   },
-  seatBoxLabel: {
-    fontSize: 9,
-    fontWeight: typography.weights.bold,
+  seatBadgeLabel: {
+    ...textStyles.overline,
     color: colors.successText,
-    letterSpacing: 0.6,
+    letterSpacing: 0.8,
   },
-  seatBoxVal: {
-    fontSize: 15,
-    fontWeight: typography.weights.extrabold,
+  seatBadgeNumber: {
+    ...textStyles.display,
+    fontSize: 32,
     color: colors.successText,
-    marginTop: 1,
+    fontWeight: "800",
   },
-  seatBoxSub: {
-    fontSize: 11,
-    color: colors.success,
+  seatDivider: {
+    width: 1,
+    height: "80%",
+    backgroundColor: colors.successBorder,
   },
-  scheduleHeaderRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 10,
+  seatInfoCol: {
+    flex: 1,
+    gap: 3,
   },
-  scheduleTitle: {
-    fontSize: 14,
-    fontWeight: typography.weights.bold,
+  hallName: {
+    ...textStyles.title,
     color: colors.text,
   },
-  seeAllText: {
-    fontSize: 12,
-    fontWeight: typography.weights.bold,
-    color: colors.primary,
-  },
-  examListCard: {
-    backgroundColor: colors.surface,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: colors.border,
-    padding: 14,
-    marginBottom: 10,
-    ...shadows.sm,
-  },
-  examCardTop: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
-  examCardCode: {
-    fontSize: 12,
-    fontWeight: typography.weights.bold,
-    color: colors.primaryDark,
-  },
-  examCardTitle: {
-    fontSize: 14,
-    fontWeight: typography.weights.bold,
-    color: colors.text,
-    marginTop: 4,
-    marginBottom: 8,
-  },
-  examCardBottom: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
-  examCardDateTime: {
-    fontSize: 11,
+  hallLocation: {
+    ...textStyles.caption,
     color: colors.textSecondary,
   },
-  examCardSeatText: {
+  hallNotice: {
+    ...textStyles.caption,
     fontSize: 11,
-    fontWeight: typography.weights.bold,
+    color: colors.successText,
+    marginTop: 4,
+  },
+  pendingSeatBox: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    backgroundColor: colors.warningLight,
+    borderWidth: 1,
+    borderColor: colors.warningBorder,
+    borderRadius: radii.lg,
+    padding: spacing.md,
+    gap: spacing.sm,
+    marginTop: spacing.sm,
+  },
+  pendingSeatTitle: {
+    ...textStyles.label,
+    color: colors.warningText,
+    fontWeight: "700",
+  },
+  pendingSeatSub: {
+    ...textStyles.caption,
+    color: colors.warningText,
+    marginTop: 2,
+    lineHeight: 16,
+  },
+  emptyExamBox: {
+    alignItems: "center",
+    paddingVertical: spacing.xl,
+    gap: spacing.xs,
+  },
+  emptyExamTitle: {
+    ...textStyles.title,
+    color: colors.text,
+  },
+  emptyExamSub: {
+    ...textStyles.caption,
+    color: colors.textSecondary,
+    textAlign: "center",
+  },
+  sectionHeaderRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: spacing.xs,
+  },
+  sectionTitle: {
+    ...textStyles.title,
+    color: colors.text,
+  },
+  examList: {
+    gap: spacing.sm,
+  },
+  examItemCard: {
+    backgroundColor: colors.surface,
+    borderRadius: radii.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.md,
+    gap: spacing.xs,
+    ...shadows.sm,
+  },
+  examItemTop: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  examCode: {
+    ...textStyles.caption,
+    fontWeight: "700",
+    color: colors.primaryDark,
+  },
+  examMiniPill: {
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: radii.full,
+    borderWidth: 1,
+  },
+  examMiniPillText: {
+    ...textStyles.caption,
+    fontSize: 11,
+    fontWeight: "600",
+  },
+  examName: {
+    ...textStyles.body,
+    fontWeight: "600",
+    color: colors.text,
+  },
+  examItemBottom: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginTop: 2,
+  },
+  examDateText: {
+    ...textStyles.caption,
+    color: colors.textSecondary,
+  },
+  examHallText: {
+    ...textStyles.caption,
+    fontWeight: "600",
+    color: colors.text,
   },
 });

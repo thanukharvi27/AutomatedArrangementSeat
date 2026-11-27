@@ -15,20 +15,21 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { AuthContext } from "../../context/AuthContext";
-import { colors, typography, shadows } from "../../theme/colors";
+import { colors, textStyles, spacing, radii, shadows, motion, transition } from "../../theme/tokens";
 import {
   getApiBaseUrl,
   setApiBaseUrl,
   pingBackend,
   PRESET_HOSTS,
-  HOST_LAN_IP,
 } from "../../services/api";
 import { showAlert } from "../../utils/alerts";
+import { Button } from "../../components/common/Button";
+import { FadeIn, Touchable } from "../../components/common/Motion";
 
 export default function LoginScreen({ navigation }) {
   const { login } = useContext(AuthContext);
   const { width } = useWindowDimensions();
-  const isDesktop = width >= 768;
+  const isDesktop = width >= 860;
 
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -157,327 +158,351 @@ export default function LoginScreen({ navigation }) {
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-          <View style={[styles.card, isDesktop && styles.cardDesktop]}>
-            {/* Header Nav Row */}
-            <View style={styles.headerNavRow}>
-              <Pressable
-                style={styles.backBtn}
-                onPress={() => {
-                  if (navigation.canGoBack()) {
-                    navigation.goBack();
-                  } else {
-                    navigation.navigate("Splash");
-                  }
-                }}
-                hitSlop={8}
-              >
-                <Ionicons name="arrow-back" size={16} color={colors.textSecondary} />
-                <Text style={styles.backBtnText}>Home</Text>
-              </Pressable>
+          <View style={[styles.mainWrapper, isDesktop && styles.mainWrapperDesktop]}>
+            {/* Desktop Brand Panel */}
+            {isDesktop && (
+              <FadeIn delay={50} style={styles.brandPanel}>
+                <View style={styles.brandHeader}>
+                  <View style={styles.brandLogoCircle}>
+                    <Ionicons name="school" size={28} color={colors.primary} />
+                  </View>
+                  <View>
+                    <Text style={styles.brandTitle}>ExamEase</Text>
+                    <Text style={styles.brandSubtitle}>EXAMINATION PLATFORM</Text>
+                  </View>
+                </View>
 
-              <View style={styles.systemTag}>
-                <Text style={styles.systemTagText}>EXAMEASE</Text>
-              </View>
-            </View>
+                <View style={styles.brandPitch}>
+                  <Text style={styles.pitchHeading}>
+                    Modern Examination Management & Seating Automation
+                  </Text>
+                  <Text style={styles.pitchBody}>
+                    Enterprise-grade seating allocation with zero-collision branch interleaving, automated faculty invigilation assignments, and real-time student hall tickets.
+                  </Text>
+                </View>
 
-            {/* Logo & Heading */}
-            <View style={styles.brandBlock}>
-              <View style={styles.iconCircle}>
-                <Ionicons name="school" size={26} color={colors.primary} />
-              </View>
-              <Text style={styles.heading}>Sign In</Text>
-              <Text style={styles.subheading}>
-                Access your exam seatings, hall plans & duties
-              </Text>
-            </View>
+                <View style={styles.featureList}>
+                  <View style={styles.featureItem}>
+                    <View style={styles.featureIcon}>
+                      <Ionicons name="shield-checkmark" size={16} color={colors.success} />
+                    </View>
+                    <View style={styles.featureTextCol}>
+                      <Text style={styles.featureTitle}>Zero-Collision Engine</Text>
+                      <Text style={styles.featureDesc}>Adjacent bench separation across disciplines</Text>
+                    </View>
+                  </View>
 
-            {/* Find Seat Callout */}
-            <Pressable
-              style={styles.seatFinderCallout}
-              onPress={() => navigation.navigate("PublicFindSeat")}
-            >
-              <View style={styles.seatFinderIcon}>
-                <Ionicons name="search" size={16} color={colors.success} />
-              </View>
-              <View style={styles.seatFinderInfo}>
-                <Text style={styles.seatFinderTitle}>Student Seat Lookup</Text>
-                <Text style={styles.seatFinderSub}>Find your hall & seat by USN without signing in</Text>
-              </View>
-              <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
-            </Pressable>
+                  <View style={styles.featureItem}>
+                    <View style={styles.featureIcon}>
+                      <Ionicons name="easel-outline" size={16} color={colors.primary} />
+                    </View>
+                    <View style={styles.featureTextCol}>
+                      <Text style={styles.featureTitle}>Hall Optimization</Text>
+                      <Text style={styles.featureDesc}>Matrix layout support with capacity indicators</Text>
+                    </View>
+                  </View>
 
-            {/* Error Banner */}
-            {errorMessage ? (
-              <View style={styles.errorBox}>
-                <Ionicons name="alert-circle" size={18} color={colors.error} style={{ marginRight: 8, marginTop: 2 }} />
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.errorText}>{errorMessage}</Text>
-                  {errorMessage.includes("Cannot connect") && (
-                    <View style={{ flexDirection: "row", marginTop: 8, gap: 8 }}>
-                      <Pressable
-                        style={{
-                          flexDirection: "row",
-                          alignItems: "center",
-                          backgroundColor: colors.primary,
-                          paddingVertical: 5,
-                          paddingHorizontal: 10,
-                          borderRadius: 6,
-                          alignSelf: "flex-start",
-                        }}
-                        onPress={() => handleTestConnection()}
-                        disabled={testingConnection}
-                      >
-                        {testingConnection ? (
-                          <ActivityIndicator size="small" color="#fff" style={{ marginRight: 4 }} />
-                        ) : (
-                          <Ionicons name="refresh" size={13} color="#fff" style={{ marginRight: 4 }} />
-                        )}
-                        <Text style={{ color: "#fff", fontSize: 11, fontWeight: "600" }}>
-                          {testingConnection ? "Checking..." : "Retry Connection"}
-                        </Text>
-                      </Pressable>
-                      <Pressable
-                        style={{
-                          flexDirection: "row",
-                          alignItems: "center",
-                          backgroundColor: colors.surface,
-                          borderWidth: 1,
-                          borderColor: colors.border,
-                          paddingVertical: 5,
-                          paddingHorizontal: 10,
-                          borderRadius: 6,
-                          alignSelf: "flex-start",
-                        }}
-                        onPress={() => setShowServerConfig(true)}
-                      >
-                        <Ionicons name="settings-outline" size={13} color={colors.text} style={{ marginRight: 4 }} />
-                        <Text style={{ color: colors.text, fontSize: 11, fontWeight: "600" }}>
-                          Change Host
-                        </Text>
-                      </Pressable>
+                  <View style={styles.featureItem}>
+                    <View style={styles.featureIcon}>
+                      <Ionicons name="search-outline" size={16} color={colors.accent} />
+                    </View>
+                    <View style={styles.featureTextCol}>
+                      <Text style={styles.featureTitle}>Instant USN Lookup</Text>
+                      <Text style={styles.featureDesc}>Public search without requiring login credentials</Text>
+                    </View>
+                  </View>
+                </View>
+
+                <View style={styles.brandFooter}>
+                  <Text style={styles.brandFooterText}>
+                    Academic Year 2025–26 • Powered by Examination Cell
+                  </Text>
+                </View>
+              </FadeIn>
+            )}
+
+            {/* Right Card / Mobile Card */}
+            <FadeIn delay={100} style={[styles.card, isDesktop && styles.cardDesktop]}>
+              {/* Header Navigation Row */}
+              <View style={styles.headerNavRow}>
+                <Pressable
+                  style={styles.backBtn}
+                  onPress={() => {
+                    navigation.navigate("PublicFindSeat");
+                  }}
+                  hitSlop={8}
+                  accessibilityRole="button"
+                  accessibilityLabel="Back to seat search"
+                >
+                  <Ionicons name="arrow-back" size={16} color={colors.textSecondary} />
+                  <Text style={styles.backBtnText}>Back to seat search</Text>
+                </Pressable>
+
+                <View style={styles.systemTag}>
+                  <Text style={styles.systemTagText}>STAFF ACCESS</Text>
+                </View>
+              </View>
+
+              {/* Logo & Heading */}
+              <View style={styles.brandBlock}>
+                {!isDesktop && (
+                  <View style={styles.iconCircle}>
+                    <Ionicons name="shield-checkmark" size={24} color={colors.primary} />
+                  </View>
+                )}
+                <Text style={styles.heading}>Staff sign in</Text>
+                <Text style={styles.subheading}>
+                  For administrators and faculty
+                </Text>
+              </View>
+
+              {/* Error Banner */}
+              {errorMessage ? (
+                <View style={styles.errorBox}>
+                  <Ionicons name="alert-circle" size={18} color={colors.danger} style={{ marginRight: 8, marginTop: 2 }} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.errorText}>{errorMessage}</Text>
+                    {errorMessage.includes("Cannot connect") && (
+                      <View style={{ flexDirection: "row", marginTop: spacing.sm, gap: spacing.sm }}>
+                        <Button
+                          title={testingConnection ? "Checking..." : "Retry"}
+                          variant="primary"
+                          size="sm"
+                          onPress={() => handleTestConnection()}
+                          loading={testingConnection}
+                          icon={<Ionicons name="refresh" size={13} color={colors.textInverse} />}
+                        />
+                        <Button
+                          title="Change Host"
+                          variant="secondary"
+                          size="sm"
+                          onPress={() => setShowServerConfig(true)}
+                          icon={<Ionicons name="settings-outline" size={13} color={colors.text} />}
+                        />
+                      </View>
+                    )}
+                  </View>
+                </View>
+              ) : null}
+
+              {/* Form Fields */}
+              <View style={styles.form}>
+                <View style={styles.inputGroup}>
+                  <Text style={styles.label}>Staff Username</Text>
+                  <View style={styles.inputWrapper}>
+                    <Ionicons name="person-outline" size={16} color={colors.textMuted} style={styles.inputIcon} />
+                    <TextInput
+                      style={styles.input}
+                      placeholder="e.g. admin or faculty1"
+                      placeholderTextColor={colors.textMuted}
+                      value={username}
+                      onChangeText={(val) => {
+                        setUsername(val);
+                        setActiveDemo(null);
+                        if (errorMessage) setErrorMessage("");
+                      }}
+                      autoCapitalize="none"
+                      autoCorrect={false}
+                      returnKeyType="next"
+                    />
+                  </View>
+                </View>
+
+                <View style={styles.inputGroup}>
+                  <Text style={styles.label}>Password</Text>
+                  <View style={styles.inputWrapper}>
+                    <Ionicons name="lock-closed-outline" size={16} color={colors.textMuted} style={styles.inputIcon} />
+                    <TextInput
+                      style={styles.input}
+                      placeholder="Enter your password"
+                      placeholderTextColor={colors.textMuted}
+                      value={password}
+                      onChangeText={(val) => {
+                        setPassword(val);
+                        setActiveDemo(null);
+                        if (errorMessage) setErrorMessage("");
+                      }}
+                      secureTextEntry={!showPassword}
+                      autoCapitalize="none"
+                      returnKeyType="done"
+                      onSubmitEditing={handleLogin}
+                    />
+                    <Pressable
+                      style={styles.eyeBtn}
+                      onPress={() => setShowPassword(!showPassword)}
+                      hitSlop={8}
+                      accessibilityLabel={showPassword ? "Hide password" : "Show password"}
+                      accessibilityRole="button"
+                    >
+                      <Ionicons
+                        name={showPassword ? "eye-off-outline" : "eye-outline"}
+                        size={18}
+                        color={colors.textSecondary}
+                      />
+                    </Pressable>
+                  </View>
+                </View>
+
+                {/* Submit Button */}
+                <Button
+                  title="Sign In"
+                  variant="primary"
+                  size="lg"
+                  onPress={handleLogin}
+                  loading={submitting}
+                  icon={<Ionicons name="log-in-outline" size={18} color={colors.textInverse} />}
+                  style={{ marginTop: spacing.xs }}
+                />
+
+                {/* Demo Account Shortcuts (Staff Only) */}
+                <View style={styles.demoSection}>
+                  <Text style={styles.demoTitle}>QUICK DEMO SHORTCUTS</Text>
+                  <Text style={styles.demoSub}>Tap a role to autofill staff credentials:</Text>
+
+                  <View style={styles.demoGrid}>
+                    <Pressable
+                      style={[
+                        styles.demoPill,
+                        activeDemo === "admin" && styles.demoPillActive,
+                      ]}
+                      onPress={() => fillDemo("admin", "Admin@123", "admin")}
+                    >
+                      <View style={[styles.demoIconBg, { backgroundColor: colors.pastelBlue }]}>
+                        <Ionicons name="shield-checkmark" size={14} color={colors.primary} />
+                      </View>
+                      <Text style={styles.demoRole}>Admin</Text>
+                      <Text style={styles.demoUser}>admin</Text>
+                    </Pressable>
+
+                    <Pressable
+                      style={[
+                        styles.demoPill,
+                        activeDemo === "faculty" && styles.demoPillActive,
+                      ]}
+                      onPress={() => fillDemo("faculty1", "Faculty@123", "faculty")}
+                    >
+                      <View style={[styles.demoIconBg, { backgroundColor: colors.pastelLavender }]}>
+                        <Ionicons name="briefcase" size={14} color={colors.accent} />
+                      </View>
+                      <Text style={styles.demoRole}>Faculty</Text>
+                      <Text style={styles.demoUser}>faculty1</Text>
+                    </Pressable>
+                  </View>
+                </View>
+
+                {/* Back to Seat Search Link */}
+                <Pressable
+                  style={styles.backToSearchCardLink}
+                  onPress={() => navigation.navigate("PublicFindSeat")}
+                  hitSlop={8}
+                  accessibilityRole="button"
+                  accessibilityLabel="Back to exam seat search"
+                >
+                  <Ionicons name="search-outline" size={14} color={colors.primary} style={{ marginRight: 6 }} />
+                  <Text style={styles.backToSearchCardText}>
+                    Looking for student seat allocation?{" "}
+                    <Text style={styles.backToSearchCardBold}>Back to seat search →</Text>
+                  </Text>
+                </Pressable>
+
+                {/* Server Host Pill */}
+                <View style={styles.serverSection}>
+                  <Pressable
+                    style={styles.serverPill}
+                    onPress={() => setShowServerConfig(!showServerConfig)}
+                  >
+                    <View
+                      style={[
+                        styles.serverDot,
+                        {
+                          backgroundColor:
+                            serverOnline === true
+                              ? colors.success
+                              : serverOnline === false
+                              ? colors.danger
+                              : colors.warning,
+                        },
+                      ]}
+                    />
+                    <Text style={styles.serverPillText} numberOfLines={1}>
+                      {serverOnline === true
+                        ? `API Online: ${serverUrl}`
+                        : serverOnline === false
+                        ? `API Offline: ${serverUrl}`
+                        : `API Checking: ${serverUrl}`}
+                    </Text>
+                    <Ionicons
+                      name={showServerConfig ? "chevron-up" : "chevron-down"}
+                      size={12}
+                      color={colors.textSecondary}
+                      style={{ marginLeft: 4 }}
+                    />
+                  </Pressable>
+
+                  {showServerConfig && (
+                    <View style={styles.serverDrawer}>
+                      <Text style={styles.drawerTitle}>Backend API Host Configuration</Text>
+                      <TextInput
+                        style={styles.serverInput}
+                        value={serverUrl}
+                        onChangeText={setServerUrl}
+                        placeholder="http://localhost:5000/api"
+                        placeholderTextColor={colors.textMuted}
+                        autoCapitalize="none"
+                      />
+
+                      <Text style={styles.drawerSub}>Quick Presets:</Text>
+                      <View style={styles.presetRow}>
+                        {PRESET_HOSTS.map((preset, idx) => (
+                          <Pressable
+                            key={idx}
+                            style={[
+                              styles.presetChip,
+                              serverUrl === preset.url && styles.presetChipActive,
+                            ]}
+                            onPress={() => {
+                              setServerUrl(preset.url);
+                              setApiBaseUrl(preset.url);
+                              setServerStatusMessage(`Switched to ${preset.label}`);
+                              setTimeout(() => setServerStatusMessage(""), 2500);
+                            }}
+                          >
+                            <Text
+                              style={[
+                                styles.presetChipText,
+                                serverUrl === preset.url && styles.presetChipTextActive,
+                              ]}
+                            >
+                              {preset.label}
+                            </Text>
+                          </Pressable>
+                        ))}
+                      </View>
+
+                      <View style={styles.drawerActions}>
+                        <Button
+                          title="Save URL"
+                          variant="secondary"
+                          size="sm"
+                          onPress={handleSaveServerUrl}
+                        />
+                        <Button
+                          title="Test Server"
+                          variant="outline"
+                          size="sm"
+                          onPress={() => handleTestConnection()}
+                          loading={testingConnection}
+                        />
+                      </View>
+
+                      {serverStatusMessage ? (
+                        <Text style={styles.serverStatusNote}>{serverStatusMessage}</Text>
+                      ) : null}
                     </View>
                   )}
                 </View>
               </View>
-            ) : null}
-
-            {/* Form Fields */}
-            <View style={styles.form}>
-              <View style={styles.inputGroup}>
-                <Text style={styles.label}>Username or Student USN</Text>
-                <View style={styles.inputWrapper}>
-                  <Ionicons name="person-outline" size={16} color={colors.textMuted} style={styles.inputIcon} />
-                  <TextInput
-                    style={styles.input}
-                    placeholder="e.g. admin, faculty1, or student1"
-                    placeholderTextColor={colors.textMuted}
-                    value={username}
-                    onChangeText={(val) => {
-                      setUsername(val);
-                      setActiveDemo(null);
-                      if (errorMessage) setErrorMessage("");
-                    }}
-                    autoCapitalize="none"
-                    autoCorrect={false}
-                    returnKeyType="next"
-                  />
-                </View>
-              </View>
-
-              <View style={styles.inputGroup}>
-                <Text style={styles.label}>Password</Text>
-                <View style={styles.inputWrapper}>
-                  <Ionicons name="lock-closed-outline" size={16} color={colors.textMuted} style={styles.inputIcon} />
-                  <TextInput
-                    style={styles.input}
-                    placeholder="Enter your password"
-                    placeholderTextColor={colors.textMuted}
-                    value={password}
-                    onChangeText={(val) => {
-                      setPassword(val);
-                      setActiveDemo(null);
-                      if (errorMessage) setErrorMessage("");
-                    }}
-                    secureTextEntry={!showPassword}
-                    autoCapitalize="none"
-                    returnKeyType="done"
-                    onSubmitEditing={handleLogin}
-                  />
-                  <Pressable
-                    style={styles.eyeBtn}
-                    onPress={() => setShowPassword(!showPassword)}
-                    hitSlop={8}
-                  >
-                    <Ionicons
-                      name={showPassword ? "eye-off-outline" : "eye-outline"}
-                      size={18}
-                      color={colors.textSecondary}
-                    />
-                  </Pressable>
-                </View>
-              </View>
-
-              {/* Submit Button */}
-              <Pressable
-                style={[styles.submitBtn, submitting && styles.btnDisabled]}
-                onPress={handleLogin}
-                disabled={submitting}
-              >
-                {submitting ? (
-                  <View style={styles.loadingRow}>
-                    <ActivityIndicator color="#FFFFFF" size="small" />
-                    <Text style={[styles.submitBtnText, { marginLeft: 8 }]}>Signing In...</Text>
-                  </View>
-                ) : (
-                  <View style={styles.loadingRow}>
-                    <Ionicons name="log-in-outline" size={18} color="#FFFFFF" style={{ marginRight: 6 }} />
-                    <Text style={styles.submitBtnText}>Sign In</Text>
-                  </View>
-                )}
-              </Pressable>
-
-              {/* Demo Account Shortcuts */}
-              <View style={styles.demoSection}>
-                <Text style={styles.demoTitle}>QUICK DEMO SHORTCUTS</Text>
-                <Text style={styles.demoSub}>Tap a role to autofill login credentials:</Text>
-
-                <View style={styles.demoGrid}>
-                  <Pressable
-                    style={[
-                      styles.demoPill,
-                      activeDemo === "admin" && styles.demoPillActive,
-                    ]}
-                    onPress={() => fillDemo("admin", "Admin@123", "admin")}
-                  >
-                    <Ionicons name="shield-checkmark" size={13} color={colors.primary} />
-                    <Text style={styles.demoRole}>Admin</Text>
-                    <Text style={styles.demoUser}>admin</Text>
-                  </Pressable>
-
-                  <Pressable
-                    style={[
-                      styles.demoPill,
-                      activeDemo === "faculty" && styles.demoPillActive,
-                    ]}
-                    onPress={() => fillDemo("faculty1", "Faculty@123", "faculty")}
-                  >
-                    <Ionicons name="briefcase" size={13} color="#7C3AED" />
-                    <Text style={styles.demoRole}>Faculty</Text>
-                    <Text style={styles.demoUser}>faculty1</Text>
-                  </Pressable>
-
-                  <Pressable
-                    style={[
-                      styles.demoPill,
-                      activeDemo === "student" && styles.demoPillActive,
-                    ]}
-                    onPress={() => fillDemo("student1", "Student@123", "student")}
-                  >
-                    <Ionicons name="school" size={13} color={colors.success} />
-                    <Text style={styles.demoRole}>Student</Text>
-                    <Text style={styles.demoUser}>student1</Text>
-                  </Pressable>
-                </View>
-              </View>
-
-              {/* Server Host Pill */}
-              <View style={styles.serverSection}>
-                <Pressable
-                  style={styles.serverPill}
-                  onPress={() => setShowServerConfig(!showServerConfig)}
-                >
-                  <View
-                    style={[
-                      styles.serverDot,
-                      {
-                        backgroundColor:
-                          serverOnline === true
-                            ? colors.success
-                            : serverOnline === false
-                            ? colors.error
-                            : colors.warning,
-                      },
-                    ]}
-                  />
-                  <Text style={styles.serverPillText} numberOfLines={1}>
-                    {serverOnline === true
-                      ? `API Online: ${serverUrl}`
-                      : serverOnline === false
-                      ? `API Offline: ${serverUrl}`
-                      : `API Checking: ${serverUrl}`}
-                  </Text>
-                  <Ionicons
-                    name={showServerConfig ? "chevron-up" : "chevron-down"}
-                    size={12}
-                    color={colors.textSecondary}
-                    style={{ marginLeft: 4 }}
-                  />
-                </Pressable>
-
-                {showServerConfig && (
-                  <View style={styles.serverDrawer}>
-                    <Text style={styles.drawerTitle}>Backend API Host Configuration</Text>
-                    <TextInput
-                      style={styles.serverInput}
-                      value={serverUrl}
-                      onChangeText={setServerUrl}
-                      placeholder="http://localhost:5000/api"
-                      placeholderTextColor={colors.textMuted}
-                      autoCapitalize="none"
-                    />
-
-                    <Text style={styles.drawerSub}>Quick Presets:</Text>
-                    <View style={styles.presetRow}>
-                      {PRESET_HOSTS.map((preset, idx) => (
-                        <Pressable
-                          key={idx}
-                          style={[
-                            styles.presetChip,
-                            serverUrl === preset.url && styles.presetChipActive,
-                          ]}
-                          onPress={() => {
-                            setServerUrl(preset.url);
-                            setApiBaseUrl(preset.url);
-                            setServerStatusMessage(`Switched to ${preset.label}`);
-                            setTimeout(() => setServerStatusMessage(""), 2500);
-                          }}
-                        >
-                          <Text
-                            style={[
-                              styles.presetChipText,
-                              serverUrl === preset.url && styles.presetChipTextActive,
-                            ]}
-                          >
-                            {preset.label}
-                          </Text>
-                        </Pressable>
-                      ))}
-                    </View>
-
-                    <View style={styles.drawerActions}>
-                      <Pressable style={styles.saveHostBtn} onPress={handleSaveServerUrl}>
-                        <Text style={styles.saveHostBtnText}>Save</Text>
-                      </Pressable>
-                      <Pressable
-                        style={[styles.testHostBtn, testingConnection && styles.btnDisabled]}
-                        onPress={() => handleTestConnection()}
-                        disabled={testingConnection}
-                      >
-                        {testingConnection ? (
-                          <ActivityIndicator size="small" color={colors.primary} />
-                        ) : (
-                          <Text style={styles.testHostBtnText}>Test Server</Text>
-                        )}
-                      </Pressable>
-                    </View>
-
-                    {serverStatusMessage ? (
-                      <Text style={styles.serverStatusNote}>{serverStatusMessage}</Text>
-                    ) : null}
-                  </View>
-                )}
-              </View>
-            </View>
+            </FadeIn>
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -497,290 +522,391 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     justifyContent: "center",
     alignItems: "center",
-    padding: 16,
+    padding: spacing.md,
   },
   scrollContainerDesktop: {
-    paddingVertical: 36,
+    paddingVertical: spacing["2xl"],
+    paddingHorizontal: spacing.xl,
+  },
+  mainWrapper: {
+    width: "100%",
+    maxWidth: 480,
+  },
+  mainWrapperDesktop: {
+    maxWidth: 960,
+    flexDirection: "row",
+    alignItems: "stretch",
+    gap: spacing.lg,
+  },
+  brandPanel: {
+    flex: 1,
+    backgroundColor: colors.surfaceAlt,
+    borderRadius: radii.xl,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing["2xl"],
+    justifyContent: "space-between",
+    ...shadows.sm,
+  },
+  brandHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.md,
+  },
+  brandLogoCircle: {
+    width: 52,
+    height: 52,
+    borderRadius: radii.lg,
+    backgroundColor: colors.primaryLight,
+    borderWidth: 1,
+    borderColor: colors.primaryMuted,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  brandTitle: {
+    ...textStyles.heading,
+    color: colors.text,
+  },
+  brandSubtitle: {
+    ...textStyles.overline,
+    color: colors.primary,
+    letterSpacing: 1.2,
+  },
+  brandPitch: {
+    marginVertical: spacing.xl,
+  },
+  pitchHeading: {
+    ...textStyles.title,
+    fontSize: 20,
+    color: colors.text,
+    marginBottom: spacing.sm,
+    lineHeight: 26,
+  },
+  pitchBody: {
+    ...textStyles.body,
+    color: colors.textSecondary,
+    lineHeight: 22,
+  },
+  featureList: {
+    gap: spacing.md,
+    marginBottom: spacing.xl,
+  },
+  featureItem: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: spacing.sm,
+  },
+  featureIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: radii.md,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  featureTextCol: {
+    flex: 1,
+  },
+  featureTitle: {
+    ...textStyles.label,
+    fontWeight: "600",
+    color: colors.text,
+  },
+  featureDesc: {
+    ...textStyles.caption,
+    color: colors.textMuted,
+  },
+  brandFooter: {
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+    paddingTop: spacing.md,
+  },
+  brandFooterText: {
+    ...textStyles.caption,
+    color: colors.textMuted,
   },
   card: {
     width: "100%",
-    maxWidth: 440,
     backgroundColor: colors.surface,
-    borderRadius: 18,
+    borderRadius: radii.xl,
     borderWidth: 1,
     borderColor: colors.border,
-    padding: 24,
+    padding: spacing.xl,
     ...shadows.md,
   },
   cardDesktop: {
-    padding: 30,
+    flex: 1.1,
+    padding: spacing["2xl"],
   },
   headerNavRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 16,
+    marginBottom: spacing.lg,
   },
   backBtn: {
     flexDirection: "row",
     alignItems: "center",
+    gap: 4,
     paddingVertical: 4,
     paddingHorizontal: 8,
-    borderRadius: 6,
-    backgroundColor: colors.surfaceAlt,
+    borderRadius: radii.sm,
   },
   backBtnText: {
-    fontSize: 12,
-    fontWeight: typography.weights.semibold,
+    ...textStyles.label,
     color: colors.textSecondary,
-    marginLeft: 4,
   },
   systemTag: {
-    paddingVertical: 2,
-    paddingHorizontal: 7,
-    borderRadius: 4,
-    backgroundColor: colors.primaryLight,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 3,
+    backgroundColor: colors.pastelBlue,
+    borderRadius: radii.full,
+    borderWidth: 1,
+    borderColor: colors.primaryMuted,
   },
   systemTagText: {
-    fontSize: 9,
-    fontWeight: typography.weights.bold,
-    color: colors.primary,
-    letterSpacing: 0.8,
+    ...textStyles.overline,
+    color: colors.primaryDark,
   },
   brandBlock: {
     alignItems: "center",
-    marginBottom: 18,
+    marginBottom: spacing.lg,
   },
   iconCircle: {
-    width: 46,
-    height: 46,
-    borderRadius: 23,
+    width: 48,
+    height: 48,
+    borderRadius: radii.full,
     backgroundColor: colors.primaryLight,
-    alignItems: "center",
     justifyContent: "center",
-    marginBottom: 10,
+    alignItems: "center",
+    marginBottom: spacing.sm,
   },
   heading: {
-    fontSize: 22,
-    fontWeight: typography.weights.extrabold,
+    ...textStyles.heading,
     color: colors.text,
-    letterSpacing: -0.4,
-    marginBottom: 4,
   },
   subheading: {
-    fontSize: 12,
+    ...textStyles.subtitle,
     color: colors.textSecondary,
     textAlign: "center",
-    lineHeight: 16,
+    marginTop: 2,
   },
   seatFinderCallout: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: colors.successLight,
-    borderRadius: 10,
+    backgroundColor: colors.pastelMint,
+    borderRadius: radii.lg,
     borderWidth: 1,
     borderColor: colors.successBorder,
-    paddingVertical: 8,
-    paddingHorizontal: 10,
-    marginBottom: 14,
+    padding: spacing.md,
+    marginBottom: spacing.md,
+    gap: spacing.sm,
   },
   seatFinderIcon: {
-    width: 28,
-    height: 28,
-    borderRadius: 6,
-    backgroundColor: "#FFFFFF",
-    alignItems: "center",
+    width: 34,
+    height: 34,
+    borderRadius: radii.md,
+    backgroundColor: colors.surface,
     justifyContent: "center",
-    marginRight: 10,
+    alignItems: "center",
   },
   seatFinderInfo: {
     flex: 1,
   },
   seatFinderTitle: {
-    fontSize: 12,
-    fontWeight: typography.weights.bold,
+    ...textStyles.label,
+    fontWeight: "700",
     color: colors.successText,
   },
   seatFinderSub: {
-    fontSize: 10,
-    color: colors.success,
-    marginTop: 1,
+    ...textStyles.caption,
+    color: colors.successText,
+    opacity: 0.85,
   },
   errorBox: {
     flexDirection: "row",
     alignItems: "flex-start",
-    backgroundColor: colors.errorLight,
-    borderRadius: 8,
+    backgroundColor: colors.dangerLight,
     borderWidth: 1,
-    borderColor: colors.errorBorder,
-    padding: 10,
-    marginBottom: 14,
+    borderColor: colors.dangerBorder,
+    borderRadius: radii.md,
+    padding: spacing.md,
+    marginBottom: spacing.md,
   },
   errorText: {
-    flex: 1,
-    fontSize: 12,
-    fontWeight: typography.weights.medium,
-    color: colors.errorText,
-    lineHeight: 16,
+    ...textStyles.body,
+    fontSize: 13,
+    color: colors.dangerText,
+    lineHeight: 18,
   },
   form: {
-    width: "100%",
+    gap: spacing.md,
   },
   inputGroup: {
-    marginBottom: 14,
+    gap: spacing.xs,
   },
   label: {
-    fontSize: 12,
-    fontWeight: typography.weights.semibold,
+    ...textStyles.label,
     color: colors.text,
-    marginBottom: 6,
   },
   inputWrapper: {
     flexDirection: "row",
     alignItems: "center",
-    height: 44,
     backgroundColor: colors.surfaceAlt,
-    borderRadius: 8,
+    borderRadius: radii.md,
     borderWidth: 1,
     borderColor: colors.border,
-    paddingHorizontal: 10,
+    paddingHorizontal: spacing.md,
+    height: 44,
   },
   inputIcon: {
-    marginRight: 8,
+    marginRight: spacing.sm,
   },
   input: {
     flex: 1,
-    height: "100%",
-    fontSize: 13,
+    ...textStyles.body,
     color: colors.text,
+    height: "100%",
   },
   eyeBtn: {
-    padding: 4,
-  },
-  submitBtn: {
-    height: 46,
-    backgroundColor: colors.primary,
-    borderRadius: 8,
-    justifyContent: "center",
-    alignItems: "center",
-    marginTop: 4,
-    ...shadows.sm,
-  },
-  btnDisabled: {
-    opacity: 0.65,
-  },
-  loadingRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  submitBtnText: {
-    fontSize: 14,
-    fontWeight: typography.weights.bold,
-    color: "#FFFFFF",
+    padding: spacing.xs,
   },
   demoSection: {
-    marginTop: 18,
-    paddingTop: 14,
+    marginTop: spacing.md,
+    paddingTop: spacing.md,
     borderTopWidth: 1,
-    borderTopColor: colors.borderLight,
+    borderTopColor: colors.border,
   },
   demoTitle: {
-    fontSize: 10,
-    fontWeight: typography.weights.bold,
+    ...textStyles.overline,
     color: colors.textMuted,
-    letterSpacing: 0.6,
+    letterSpacing: 0.8,
   },
   demoSub: {
-    fontSize: 11,
+    ...textStyles.caption,
     color: colors.textSecondary,
     marginTop: 2,
-    marginBottom: 8,
+    marginBottom: spacing.sm,
   },
   demoGrid: {
     flexDirection: "row",
-    gap: 8,
+    gap: spacing.sm,
   },
   demoPill: {
     flex: 1,
     backgroundColor: colors.surfaceAlt,
-    borderRadius: 8,
     borderWidth: 1,
     borderColor: colors.border,
-    paddingVertical: 8,
-    paddingHorizontal: 4,
+    borderRadius: radii.md,
+    padding: spacing.sm,
     alignItems: "center",
+    ...(Platform.OS === "web"
+      ? {
+          transitionProperty: "border-color, background-color, transform",
+          transitionDuration: "150ms",
+        }
+      : {}),
   },
   demoPillActive: {
-    backgroundColor: colors.primaryLight,
     borderColor: colors.primary,
+    backgroundColor: colors.primaryLight,
+  },
+  demoIconBg: {
+    width: 26,
+    height: 26,
+    borderRadius: radii.sm,
+    justifyContent: "center",
+    alignItems: "center",
+    marginBottom: 4,
   },
   demoRole: {
-    fontSize: 11,
-    fontWeight: typography.weights.bold,
+    ...textStyles.label,
+    fontSize: 12,
+    fontWeight: "700",
     color: colors.text,
-    marginTop: 3,
   },
   demoUser: {
-    fontSize: 10,
+    ...textStyles.caption,
+    fontSize: 11,
     color: colors.textMuted,
-    marginTop: 1,
+  },
+  backToSearchCardLink: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    backgroundColor: colors.primaryLight,
+    borderRadius: radii.md,
+    marginTop: spacing.xs,
+    borderWidth: 1,
+    borderColor: colors.primaryMuted,
+  },
+  backToSearchCardText: {
+    ...textStyles.caption,
+    fontSize: 12,
+    color: colors.textSecondary,
+  },
+  backToSearchCardBold: {
+    fontWeight: "700",
+    color: colors.primary,
   },
   serverSection: {
-    marginTop: 14,
-    alignItems: "center",
+    marginTop: spacing.xs,
   },
   serverPill: {
     flexDirection: "row",
     alignItems: "center",
+    alignSelf: "center",
     backgroundColor: colors.surfaceAlt,
+    borderRadius: radii.full,
     paddingVertical: 5,
-    paddingHorizontal: 10,
-    borderRadius: 14,
+    paddingHorizontal: 12,
     borderWidth: 1,
     borderColor: colors.border,
+    gap: 6,
   },
   serverDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: colors.success,
-    marginRight: 6,
+    width: 7,
+    height: 7,
+    borderRadius: 4,
   },
   serverPillText: {
+    ...textStyles.caption,
     fontSize: 11,
     color: colors.textSecondary,
-    fontWeight: typography.weights.medium,
+    maxWidth: 240,
   },
   serverDrawer: {
-    width: "100%",
+    marginTop: spacing.sm,
     backgroundColor: colors.surfaceAlt,
-    borderRadius: 10,
+    borderRadius: radii.lg,
     borderWidth: 1,
     borderColor: colors.border,
-    padding: 12,
-    marginTop: 8,
+    padding: spacing.md,
   },
   drawerTitle: {
-    fontSize: 11,
-    fontWeight: typography.weights.bold,
+    ...textStyles.label,
+    fontWeight: "600",
     color: colors.text,
-    marginBottom: 6,
+    marginBottom: spacing.xs,
   },
   serverInput: {
-    height: 38,
     backgroundColor: colors.surface,
-    borderRadius: 6,
     borderWidth: 1,
     borderColor: colors.border,
-    paddingHorizontal: 10,
-    fontSize: 12,
+    borderRadius: radii.md,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 6,
+    ...textStyles.body,
+    fontSize: 13,
     color: colors.text,
-    marginBottom: 8,
+    marginBottom: spacing.sm,
   },
   drawerSub: {
-    fontSize: 10,
-    fontWeight: typography.weights.semibold,
+    ...textStyles.caption,
     color: colors.textSecondary,
     marginBottom: 4,
   },
@@ -788,64 +914,38 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     flexWrap: "wrap",
     gap: 6,
-    marginBottom: 8,
+    marginBottom: spacing.sm,
   },
   presetChip: {
-    paddingVertical: 4,
     paddingHorizontal: 8,
-    borderRadius: 4,
+    paddingVertical: 4,
+    borderRadius: radii.sm,
     backgroundColor: colors.surface,
     borderWidth: 1,
     borderColor: colors.border,
   },
   presetChipActive: {
-    backgroundColor: colors.primaryLight,
     borderColor: colors.primary,
+    backgroundColor: colors.primaryLight,
   },
   presetChipText: {
-    fontSize: 10,
+    ...textStyles.caption,
+    fontSize: 11,
     color: colors.textSecondary,
   },
   presetChipTextActive: {
-    color: colors.primary,
-    fontWeight: typography.weights.bold,
+    color: colors.primaryDark,
+    fontWeight: "600",
   },
   drawerActions: {
     flexDirection: "row",
-    gap: 8,
-  },
-  saveHostBtn: {
-    flex: 1,
-    backgroundColor: colors.primary,
-    height: 32,
-    borderRadius: 6,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  saveHostBtnText: {
-    color: "#FFFFFF",
-    fontSize: 11,
-    fontWeight: typography.weights.bold,
-  },
-  testHostBtn: {
-    flex: 1,
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-    height: 32,
-    borderRadius: 6,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  testHostBtnText: {
-    color: colors.text,
-    fontSize: 11,
-    fontWeight: typography.weights.semibold,
+    gap: spacing.sm,
+    marginTop: 4,
   },
   serverStatusNote: {
+    ...textStyles.caption,
     fontSize: 11,
-    color: colors.success,
-    marginTop: 6,
-    textAlign: "center",
+    color: colors.primaryDark,
+    marginTop: spacing.xs,
   },
 });

@@ -1,74 +1,115 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   View,
   Text,
   StyleSheet,
-  FlatList,
-  TextInput,
   Pressable,
+  ScrollView,
   RefreshControl,
-  Modal,
-  ActivityIndicator,
   useWindowDimensions,
+  Platform,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { ResponsiveLayout } from "../../components/ResponsiveLayout";
-import { Badge } from "../../components/Badge";
-import { LoadingSpinner } from "../../components/LoadingSpinner";
-import { EmptyState } from "../../components/EmptyState";
-import { colors, typography, shadows } from "../../theme/colors";
-import { showAlert } from "../../utils/alerts";
+import { AppLayout } from "../../components/layout/AppLayout";
+import { Card } from "../../components/common/Card";
+import { Button } from "../../components/common/Button";
+import { SearchInput, Input } from "../../components/common/Input";
+import { Select } from "../../components/common/Select";
+import { DataTable } from "../../components/common/DataTable";
+import { Pagination } from "../../components/common/Pagination";
+import { Drawer } from "../../components/common/Drawer";
+import { ModalDialog } from "../../components/common/ModalDialog";
+import { EmptyState } from "../../components/common/EmptyState";
+import { LoadingSkeleton } from "../../components/common/LoadingSkeleton";
+import { colors, radii, textStyles, shadows } from "../../theme/tokens";
+import { showAlert, confirmAction } from "../../utils/alerts";
+import { useFeedback } from "../../components/common/Feedback";
+import ImportStudentsDialog from "../../components/ImportStudentsDialog";
 import api, { studentApi, departmentApi } from "../../services/api";
 
 export default function StudentManagementScreen({ navigation }) {
   const { width } = useWindowDimensions();
-  const isDesktop = width >= 900;
+  const isDesktop = width >= 768;
 
+  // Server pagination & filters
   const [students, setStudents] = useState([]);
   const [departments, setDepartments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [search, setSearch] = useState("");
+
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalStudents, setTotalStudents] = useState(0);
+  const perPage = 10;
+
+  const [searchTerm, setSearchTerm] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [selectedDeptId, setSelectedDeptId] = useState(null);
   const [selectedSemester, setSelectedSemester] = useState(null);
+  const [selectedStatus, setSelectedStatus] = useState(null);
 
-  // Add Student Modal State
+  // Drawer & Modals state
+  const [detailStudent, setDetailStudent] = useState(null);
   const [showAddModal, setShowAddModal] = useState(false);
-  const [creating, setCreating] = useState(false);
-  const [usn, setUsn] = useState("");
-  const [fullName, setFullName] = useState("");
-  const [deptId, setDeptId] = useState("");
-  const [semester, setSemester] = useState("5");
-  const [section, setSection] = useState("A");
-  const [email, setEmail] = useState("");
-  const [phone, setPhone] = useState("");
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [showImportModal, setShowImportModal] = useState(false);
+  const [editingStudent, setEditingStudent] = useState(null);
+  const [submitting, setSubmitting] = useState(false);
+
+  const { showToast } = useFeedback();
+
+  // Form states
+  const [formUsn, setFormUsn] = useState("");
+  const [formName, setFormName] = useState("");
+  const [formEmail, setFormEmail] = useState("");
+  const [formPhone, setFormPhone] = useState("");
+  const [formDeptId, setFormDeptId] = useState("");
+  const [formSemester, setFormSemester] = useState("5");
+  const [formSection, setFormSection] = useState("A");
+
+  // Debounce search by 300ms
+  const searchTimeoutRef = useRef(null);
+  const handleSearchChange = (text) => {
+    setSearchTerm(text);
+    if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
+    searchTimeoutRef.current = setTimeout(() => {
+      setDebouncedSearch(text);
+      setPage(1);
+    }, 300);
+  };
 
   const fetchStudents = async () => {
     try {
-      let queryParams = `/students?per_page=100`;
-      if (search.trim()) queryParams += `&search=${encodeURIComponent(search.trim())}`;
-      if (selectedDeptId) queryParams += `&department_id=${selectedDeptId}`;
-      if (selectedSemester) queryParams += `&semester=${selectedSemester}`;
+      let query = `/students?page=${page}&per_page=${perPage}`;
+      if (debouncedSearch.trim()) query += `&search=${encodeURIComponent(debouncedSearch.trim())}`;
+      if (selectedDeptId) query += `&department_id=${selectedDeptId}`;
+      if (selectedSemester) query += `&semester=${selectedSemester}`;
+      if (selectedStatus) query += `&status=${selectedStatus}`;
 
       const [stuRes, deptRes] = await Promise.allSettled([
-        api.get(queryParams),
+        api.get(query),
         departmentApi.getAll(),
       ]);
 
       if (stuRes.status === "fulfilled") {
-        const sdata = stuRes.value.data || stuRes.value;
-        if (sdata.success) {
-          setStudents(sdata.students || []);
+        const s = stuRes.value.data || stuRes.value;
+        if (s.success) {
+          setStudents(s.students || []);
+          if (s.pagination) {
+            setPage(s.pagination.page || 1);
+            setTotalPages(s.pagination.pages || 1);
+            setTotalStudents(s.pagination.total || (s.students || []).length);
+          } else {
+            setTotalStudents(s.total || (s.students || []).length);
+            setTotalPages(Math.ceil((s.total || s.students?.length || 1) / perPage));
+          }
         }
       }
 
       if (deptRes.status === "fulfilled") {
-        const ddata = deptRes.value.data || deptRes.value;
-        if (ddata.success) {
-          setDepartments(ddata.departments || []);
-          if (!deptId && ddata.departments?.length > 0) {
-            setDeptId(String(ddata.departments[0].id));
-          }
+        const d = deptRes.value.data || deptRes.value;
+        if (d.success) {
+          setDepartments(d.departments || []);
         }
       }
     } catch (err) {
@@ -81,575 +122,717 @@ export default function StudentManagementScreen({ navigation }) {
 
   useEffect(() => {
     fetchStudents();
-  }, [search, selectedDeptId, selectedSemester]);
+  }, [page, debouncedSearch, selectedDeptId, selectedSemester, selectedStatus]);
 
-  const handleCreateStudent = async () => {
-    const trimmedUsn = usn.trim().toUpperCase();
-    const trimmedName = fullName.trim();
-    const trimmedEmail = email.trim().toLowerCase();
+  const handleOpenAdd = () => {
+    setFormUsn("");
+    setFormName("");
+    setFormEmail("");
+    setFormPhone("");
+    setFormDeptId(departments[0]?.id ? String(departments[0].id) : "1");
+    setFormSemester("5");
+    setFormSection("A");
+    setShowAddModal(true);
+  };
 
-    if (!trimmedUsn || !trimmedName || !trimmedEmail || !deptId) {
-      showAlert("Missing Fields", "Please enter USN, Full Name, Email, and select Department.");
+  const handleSaveNewStudent = async () => {
+    const trimmedUsn = formUsn.trim().toUpperCase();
+    const trimmedName = formName.trim();
+    const trimmedEmail = formEmail.trim().toLowerCase();
+
+    if (!trimmedUsn || !trimmedName || !trimmedEmail || !formDeptId) {
+      showAlert("Missing Fields", "Please enter USN, Full Name, Email, and Department.");
       return;
     }
 
-    setCreating(true);
+    setSubmitting(true);
     try {
       const payload = {
         usn: trimmedUsn,
         full_name: trimmedName,
         email: trimmedEmail,
-        department_id: parseInt(deptId, 10),
-        semester: parseInt(semester, 10) || 5,
-        section: section.trim().toUpperCase() || "A",
-        phone: phone.trim() || undefined,
+        department_id: parseInt(formDeptId, 10),
+        semester: parseInt(formSemester, 10) || 5,
+        section: formSection.trim().toUpperCase() || "A",
+        phone: formPhone.trim() || undefined,
       };
 
       const res = await studentApi.create(payload);
       const data = res.data || res;
       if (data.success) {
-        showAlert("Student Added", `Candidate ${trimmedName} (${trimmedUsn}) successfully added to directory!`);
+        showAlert("Candidate Added", `${trimmedName} (${trimmedUsn}) registered into database!`);
         setShowAddModal(false);
-        setUsn("");
-        setFullName("");
-        setEmail("");
-        setPhone("");
         fetchStudents();
       } else {
-        showAlert("Error", data.error || "Could not add student.");
+        showAlert("Creation Error", data.error || "Could not register student.");
       }
     } catch (err) {
-      showAlert("Creation Failed", err.response?.data?.error || err.message || "Failed to create student.");
+      showAlert("Error", err.response?.data?.error || err.message || "Failed to create student.");
     } finally {
-      setCreating(false);
+      setSubmitting(false);
     }
   };
 
-  const handleDeleteStudent = async (student) => {
+  const handleOpenEdit = (stu) => {
+    setEditingStudent(stu);
+    setFormUsn(stu.usn);
+    setFormName(stu.full_name);
+    setFormEmail(stu.email);
+    setFormPhone(stu.phone || "");
+    setFormDeptId(String(stu.department_id));
+    setFormSemester(String(stu.semester || 5));
+    setFormSection(stu.section || "A");
+    setShowEditModal(true);
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editingStudent) return;
+    setSubmitting(true);
     try {
-      const res = await studentApi.delete(student.id);
+      const payload = {
+        full_name: formName.trim(),
+        email: formEmail.trim().toLowerCase(),
+        department_id: parseInt(formDeptId, 10),
+        semester: parseInt(formSemester, 10) || 5,
+        section: formSection.trim().toUpperCase() || "A",
+        phone: formPhone.trim() || null,
+      };
+
+      const res = await studentApi.update(editingStudent.id, payload);
       const data = res.data || res;
       if (data.success) {
-        showAlert("Deleted", `Student ${student.full_name} (${student.usn}) deleted.`);
+        showAlert("Updated", "Student candidate details updated successfully.");
+        setShowEditModal(false);
+        if (detailStudent?.id === editingStudent.id) {
+          setDetailStudent({ ...detailStudent, ...payload });
+        }
         fetchStudents();
       } else {
-        showAlert("Delete Failed", data.error || "Could not delete student.");
+        showAlert("Update Error", data.error || "Could not update student.");
       }
     } catch (err) {
-      showAlert("Delete Error", err.response?.data?.error || err.message || "Could not delete student.");
+      showAlert("Error", err.response?.data?.error || err.message || "Failed to update student.");
+    } finally {
+      setSubmitting(false);
     }
   };
 
+  const handleDeleteStudent = (stu) => {
+    confirmAction({
+      title: "Remove Candidate",
+      message: `Are you sure you want to delete ${stu.full_name} (${stu.usn}) from examination records?`,
+      confirmText: "Delete Student",
+      destructive: true,
+      onConfirm: async () => {
+        try {
+          const res = await studentApi.delete(stu.id);
+          const data = res.data || res;
+          if (data.success) {
+            showAlert("Deleted", `Student ${stu.full_name} has been removed.`);
+            if (detailStudent?.id === stu.id) setDetailStudent(null);
+            fetchStudents();
+          } else {
+            showAlert("Delete Error", data.error || "Could not delete student.");
+          }
+        } catch (err) {
+          showAlert("Error", err.response?.data?.error || err.message || "Failed to delete student.");
+        }
+      },
+    });
+  };
+
+  const columns = [
+    {
+      key: "usn",
+      title: "USN",
+      width: 130,
+      render: (val) => (
+        <View style={styles.usnChip}>
+          <Text style={styles.usnChipText}>{val}</Text>
+        </View>
+      ),
+    },
+    {
+      key: "full_name",
+      title: "Full Name",
+      render: (val, row) => (
+        <View>
+          <Text style={styles.nameText}>{val}</Text>
+          <Text style={styles.subText}>{row.email}</Text>
+        </View>
+      ),
+    },
+    {
+      key: "department_code",
+      title: "Department",
+      width: 100,
+      render: (val) => (
+        <View style={styles.deptBadge}>
+          <Text style={styles.deptBadgeText}>{val || "DEPT"}</Text>
+        </View>
+      ),
+    },
+    {
+      key: "semester",
+      title: "Semester",
+      width: 90,
+      render: (val, row) => (
+        <Text style={styles.semText}>Sem {val} ({row.section || "A"})</Text>
+      ),
+    },
+    {
+      key: "status",
+      title: "Status",
+      width: 90,
+      render: (val) => (
+        <View style={[styles.statusPill, val === "ACTIVE" ? styles.statusActive : styles.statusInactive]}>
+          <Text style={[styles.statusPillText, val === "ACTIVE" ? styles.statusTextActive : styles.statusTextInactive]}>
+            {val || "ACTIVE"}
+          </Text>
+        </View>
+      ),
+    },
+    {
+      key: "actions",
+      title: "Actions",
+      width: 140,
+      align: "right",
+      render: (_, row) => (
+        <View style={styles.actionsCell}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="View details"
+            onPress={() => setDetailStudent(row)}
+            style={styles.actionBtn}
+            hitSlop={6}
+          >
+            <Ionicons name="eye-outline" size={15} color={colors.primary} />
+          </Pressable>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Edit candidate"
+            onPress={() => handleOpenEdit(row)}
+            style={styles.actionBtn}
+            hitSlop={6}
+          >
+            <Ionicons name="create-outline" size={15} color={colors.textSecondary} />
+          </Pressable>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Delete candidate"
+            onPress={() => handleDeleteStudent(row)}
+            style={[styles.actionBtn, styles.actionBtnDanger]}
+            hitSlop={6}
+          >
+            <Ionicons name="trash-outline" size={15} color={colors.danger} />
+          </Pressable>
+        </View>
+      ),
+    },
+  ];
+
   return (
-    <ResponsiveLayout
+    <AppLayout
       title="Student Directory"
-      subtitle={`${students.length} candidates registered in examination system`}
+      subtitle={`${totalStudents} candidates registered in examination system`}
+      breadcrumb="Management / Students"
       currentRouteName="StudentManagement"
       rightAction={
-        <Pressable
-          style={styles.addBtn}
-          onPress={() => setShowAddModal(true)}
-        >
-          <Ionicons name="person-add" size={15} color="#FFFFFF" style={{ marginRight: 6 }} />
-          <Text style={styles.addBtnText}>Add Student</Text>
-        </Pressable>
-      }
-    >
-      <View style={[styles.container, isDesktop && styles.containerDesktop]}>
-        {/* Search & Filter Bar */}
-        <View style={styles.filterSection}>
-          <View style={styles.searchBox}>
-            <Ionicons name="search" size={16} color={colors.textMuted} style={{ marginRight: 8 }} />
-            <TextInput
-              style={styles.searchInput}
-              placeholder="Search by USN, Student Name, or Email..."
-              placeholderTextColor={colors.textMuted}
-              value={search}
-              onChangeText={setSearch}
-              autoCapitalize="none"
+        <View style={styles.headerActionsRow}>
+          {Platform.OS === "web" && (
+            <Button
+              title="Import CSV"
+              variant="outline"
+              size="sm"
+              icon={<Ionicons name="cloud-upload-outline" size={14} color={colors.text} />}
+              onPress={() => setShowImportModal(true)}
+              accessibilityLabel="Import students from CSV"
             />
-            {search ? (
-              <Pressable onPress={() => setSearch("")} hitSlop={8}>
-                <Ionicons name="close-circle" size={16} color={colors.textMuted} />
-              </Pressable>
-            ) : null}
-          </View>
-
-          {/* Department Filter Chips */}
-          <FlatList
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            data={[{ id: null, code: "ALL DEPTS" }, ...departments]}
-            keyExtractor={(item) => String(item.id ?? "all")}
-            contentContainerStyle={styles.deptChipList}
-            renderItem={({ item }) => {
-              const isSelected = selectedDeptId === item.id;
-              return (
-                <Pressable
-                  style={[styles.deptChip, isSelected && styles.deptChipActive]}
-                  onPress={() => setSelectedDeptId(item.id)}
-                >
-                  <Text style={[styles.deptChipText, isSelected && styles.deptChipTextActive]}>
-                    {item.code}
-                  </Text>
-                </Pressable>
-              );
-            }}
+          )}
+          <Button
+            title="Add Student"
+            size="sm"
+            icon={<Ionicons name="person-add" size={14} color="#FFFFFF" />}
+            onPress={handleOpenAdd}
+            accessibilityLabel="Add new student"
           />
         </View>
+      }
+    >
+      <ScrollView
+        contentContainerStyle={[
+          styles.scroll,
+          isDesktop && styles.scrollDesktop,
+        ]}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); fetchStudents(); }} />
+        }
+      >
+        {/* Filter & Search Bar */}
+        <Card style={styles.filterCard}>
+          <View style={styles.filterTopRow}>
+            <SearchInput
+              value={searchTerm}
+              onChangeText={handleSearchChange}
+              placeholder="Search by USN, Student Name, or Email..."
+              style={{ flex: 1 }}
+            />
+          </View>
 
-        {/* Student Roster List */}
+          {/* Department Chips */}
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.deptChipScroll}>
+            <Pressable
+              style={[styles.filterChip, selectedDeptId === null && styles.filterChipActive]}
+              onPress={() => { setSelectedDeptId(null); setPage(1); }}
+            >
+              <Text style={[styles.filterChipText, selectedDeptId === null && styles.filterChipTextActive]}>
+                All Departments
+              </Text>
+            </Pressable>
+            {departments.map((d) => (
+              <Pressable
+                key={d.id}
+                style={[styles.filterChip, selectedDeptId === d.id && styles.filterChipActive]}
+                onPress={() => { setSelectedDeptId(d.id); setPage(1); }}
+              >
+                <Text style={[styles.filterChipText, selectedDeptId === d.id && styles.filterChipTextActive]}>
+                  {d.code}
+                </Text>
+              </Pressable>
+            ))}
+          </ScrollView>
+        </Card>
+
+        {/* Data Table with server pagination */}
         {loading ? (
-          <LoadingSpinner message="Loading registered candidates..." />
+          <LoadingSkeleton height={260} />
         ) : (
-          <FlatList
-            data={students}
-            keyExtractor={(item) => String(item.id)}
-            contentContainerStyle={styles.listContent}
-            refreshControl={
-              <RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); fetchStudents(); }} />
-            }
-            ListEmptyComponent={
-              <EmptyState
-                iconName="school-outline"
-                title="No Students Found"
-                message={search ? `No student candidates matched "${search}".` : "No registered candidates found in database."}
-                actionLabel="Add First Student"
-                onAction={() => setShowAddModal(true)}
-              />
-            }
-            renderItem={({ item }) => (
-              <View style={styles.studentCard}>
-                <View style={styles.cardHeader}>
-                  <View style={styles.usnBadge}>
-                    <Text style={styles.usnText}>{item.usn}</Text>
-                  </View>
-                  <Badge
-                    label={item.department_code || "ENG"}
-                    variant="info"
-                    size="sm"
-                  />
-                </View>
+          <Card style={{ padding: 0, overflow: "hidden" }}>
+            <DataTable
+              columns={columns}
+              data={students}
+              keyExtractor={(item) => String(item.id)}
+              onRowPress={(item) => setDetailStudent(item)}
+              emptyComponent={
+                <EmptyState
+                  iconName="school-outline"
+                  title="No Candidates Found"
+                  message={searchTerm ? `No records matched "${searchTerm}".` : "No registered students in database."}
+                  actionLabel="Add Candidate"
+                  onAction={handleOpenAdd}
+                />
+              }
+            />
 
-                <Text style={styles.studentName}>{item.full_name}</Text>
-
-                <View style={styles.metaRow}>
-                  <Text style={styles.metaText}>
-                    Sem {item.semester} • Section {item.section || "A"} • {item.email}
-                  </Text>
-                  {item.phone ? (
-                    <Text style={styles.metaText}> • 📞 {item.phone}</Text>
-                  ) : null}
-                </View>
-
-                <View style={styles.cardFooter}>
-                  <View style={styles.statusPill}>
-                    <View style={[styles.statusDot, { backgroundColor: item.status === "ACTIVE" ? colors.success : colors.warning }]} />
-                    <Text style={styles.statusText}>{item.status || "ACTIVE"}</Text>
-                  </View>
-
-                  <Pressable
-                    style={styles.deleteBtn}
-                    onPress={() => handleDeleteStudent(item)}
-                    hitSlop={6}
-                  >
-                    <Ionicons name="trash-outline" size={15} color={colors.error} />
-                    <Text style={styles.deleteBtnText}>Remove</Text>
-                  </Pressable>
-                </View>
-              </View>
-            )}
-          />
+            <Pagination
+              page={page}
+              totalPages={totalPages}
+              totalItems={totalStudents}
+              perPage={perPage}
+              onPageChange={(newPage) => setPage(newPage)}
+            />
+          </Card>
         )}
 
-        {/* Add Student Modal */}
-        <Modal
-          visible={showAddModal}
-          transparent
-          animationType="fade"
-          onRequestClose={() => setShowAddModal(false)}
+        {/* Candidate Detail Drawer */}
+        <Drawer
+          visible={Boolean(detailStudent)}
+          onClose={() => setDetailStudent(null)}
+          title={detailStudent?.full_name || "Student Details"}
+          subtitle={`USN: ${detailStudent?.usn}`}
         >
-          <View style={styles.modalBackdrop}>
-            <View style={styles.modalCard}>
-              <View style={styles.modalHeader}>
-                <View>
-                  <Text style={styles.modalTitle}>Add New Student</Text>
-                  <Text style={styles.modalSub}>Register candidate into exam database</Text>
-                </View>
-                <Pressable onPress={() => setShowAddModal(false)} hitSlop={8}>
-                  <Ionicons name="close" size={20} color={colors.textSecondary} />
-                </Pressable>
+          {detailStudent && (
+            <View style={styles.drawerBody}>
+              <View style={styles.drawerAvatarBox}>
+                <Text style={styles.drawerAvatarText}>
+                  {detailStudent.full_name?.charAt(0).toUpperCase()}
+                </Text>
               </View>
 
-              <View style={styles.modalForm}>
-                <View style={styles.modalInputGroup}>
-                  <Text style={styles.modalLabel}>Student USN *</Text>
-                  <TextInput
-                    style={styles.modalInput}
-                    placeholder="e.g. 1MS22CS001"
-                    placeholderTextColor={colors.textMuted}
-                    value={usn}
-                    onChangeText={setUsn}
-                    autoCapitalize="characters"
-                  />
+              <Text style={styles.drawerName}>{detailStudent.full_name}</Text>
+              <Text style={styles.drawerUsn}>{detailStudent.usn}</Text>
+
+              <View style={styles.drawerMetaList}>
+                <View style={styles.drawerMetaItem}>
+                  <Text style={styles.drawerMetaLabel}>Email Address</Text>
+                  <Text style={styles.drawerMetaVal}>{detailStudent.email}</Text>
                 </View>
-
-                <View style={styles.modalInputGroup}>
-                  <Text style={styles.modalLabel}>Full Name *</Text>
-                  <TextInput
-                    style={styles.modalInput}
-                    placeholder="e.g. Rahul Sharma"
-                    placeholderTextColor={colors.textMuted}
-                    value={fullName}
-                    onChangeText={setFullName}
-                  />
+                <View style={styles.drawerMetaItem}>
+                  <Text style={styles.drawerMetaLabel}>Department</Text>
+                  <Text style={styles.drawerMetaVal}>{detailStudent.department_code || "Engineering"}</Text>
                 </View>
-
-                <View style={styles.modalInputRow}>
-                  <View style={{ flex: 1, marginRight: 8 }}>
-                    <Text style={styles.modalLabel}>Semester *</Text>
-                    <TextInput
-                      style={styles.modalInput}
-                      placeholder="5"
-                      placeholderTextColor={colors.textMuted}
-                      value={semester}
-                      onChangeText={setSemester}
-                      keyboardType="numeric"
-                    />
-                  </View>
-
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.modalLabel}>Section *</Text>
-                    <TextInput
-                      style={styles.modalInput}
-                      placeholder="A"
-                      placeholderTextColor={colors.textMuted}
-                      value={section}
-                      onChangeText={setSection}
-                      autoCapitalize="characters"
-                    />
-                  </View>
+                <View style={styles.drawerMetaItem}>
+                  <Text style={styles.drawerMetaLabel}>Semester & Section</Text>
+                  <Text style={styles.drawerMetaVal}>Semester {detailStudent.semester} • Section {detailStudent.section || "A"}</Text>
                 </View>
-
-                <View style={styles.modalInputGroup}>
-                  <Text style={styles.modalLabel}>Department *</Text>
-                  <View style={styles.deptPickerRow}>
-                    {departments.map((d) => (
-                      <Pressable
-                        key={d.id}
-                        style={[
-                          styles.deptPickerChip,
-                          deptId === String(d.id) && styles.deptPickerChipActive,
-                        ]}
-                        onPress={() => setDeptId(String(d.id))}
-                      >
-                        <Text
-                          style={[
-                            styles.deptPickerChipText,
-                            deptId === String(d.id) && styles.deptPickerChipTextActive,
-                          ]}
-                        >
-                          {d.code}
-                        </Text>
-                      </Pressable>
-                    ))}
-                  </View>
+                <View style={styles.drawerMetaItem}>
+                  <Text style={styles.drawerMetaLabel}>Contact Phone</Text>
+                  <Text style={styles.drawerMetaVal}>{detailStudent.phone || "Not provided"}</Text>
                 </View>
-
-                <View style={styles.modalInputGroup}>
-                  <Text style={styles.modalLabel}>Email Address *</Text>
-                  <TextInput
-                    style={styles.modalInput}
-                    placeholder="e.g. rahul@college.edu"
-                    placeholderTextColor={colors.textMuted}
-                    value={email}
-                    onChangeText={setEmail}
-                    autoCapitalize="none"
-                    keyboardType="email-address"
-                  />
+                <View style={styles.drawerMetaItem}>
+                  <Text style={styles.drawerMetaLabel}>Account Status</Text>
+                  <Text style={[styles.drawerMetaVal, { color: colors.successText, fontWeight: "700" }]}>
+                    {detailStudent.status || "ACTIVE"}
+                  </Text>
                 </View>
+              </View>
 
-                <View style={styles.modalInputGroup}>
-                  <Text style={styles.modalLabel}>Phone Number (Optional)</Text>
-                  <TextInput
-                    style={styles.modalInput}
-                    placeholder="e.g. 9876543210"
-                    placeholderTextColor={colors.textMuted}
-                    value={phone}
-                    onChangeText={setPhone}
-                    keyboardType="phone-pad"
-                  />
-                </View>
-
-                <Pressable
-                  style={[styles.saveBtn, creating && styles.btnDisabled]}
-                  onPress={handleCreateStudent}
-                  disabled={creating}
-                >
-                  {creating ? (
-                    <ActivityIndicator size="small" color="#FFFFFF" />
-                  ) : (
-                    <Text style={styles.saveBtnText}>Save Candidate</Text>
-                  )}
-                </Pressable>
+              <View style={styles.drawerBtnRow}>
+                <Button
+                  title="Edit Details"
+                  variant="secondary"
+                  icon={<Ionicons name="create-outline" size={15} color={colors.text} />}
+                  onPress={() => {
+                    const s = detailStudent;
+                    setDetailStudent(null);
+                    handleOpenEdit(s);
+                  }}
+                  style={{ flex: 1 }}
+                />
+                <Button
+                  title="Delete"
+                  variant="danger"
+                  icon={<Ionicons name="trash-outline" size={15} color="#FFFFFF" />}
+                  onPress={() => handleDeleteStudent(detailStudent)}
+                />
               </View>
             </View>
+          )}
+        </Drawer>
+
+        {/* Add Student Modal */}
+        <ModalDialog
+          visible={showAddModal}
+          onClose={() => setShowAddModal(false)}
+          title="Register New Student"
+          subtitle="Add enrolled candidate into university exam database"
+          maxWidth={460}
+        >
+          <View style={styles.modalForm}>
+            <Input
+              label="Student USN *"
+              placeholder="e.g. 1MS22CS001"
+              value={formUsn}
+              onChangeText={setFormUsn}
+              autoCapitalize="characters"
+            />
+            <Input
+              label="Full Name *"
+              placeholder="e.g. Rahul Sharma"
+              value={formName}
+              onChangeText={setFormName}
+            />
+            <Input
+              label="Email Address *"
+              placeholder="e.g. rahul@college.edu"
+              value={formEmail}
+              onChangeText={setFormEmail}
+              keyboardType="email-address"
+              autoCapitalize="none"
+            />
+            <View style={styles.modalRow}>
+              <Input
+                label="Semester *"
+                placeholder="5"
+                value={formSemester}
+                onChangeText={setFormSemester}
+                keyboardType="numeric"
+                style={{ flex: 1 }}
+              />
+              <Input
+                label="Section *"
+                placeholder="A"
+                value={formSection}
+                onChangeText={setFormSection}
+                autoCapitalize="characters"
+                style={{ flex: 1 }}
+              />
+            </View>
+            <Select
+              label="Department *"
+              value={formDeptId}
+              onChange={setFormDeptId}
+              options={departments.map((d) => ({ value: String(d.id), label: `${d.code} - ${d.name}` }))}
+            />
+            <Input
+              label="Phone Number (Optional)"
+              placeholder="e.g. 9876543210"
+              value={formPhone}
+              onChangeText={setFormPhone}
+              keyboardType="phone-pad"
+            />
+
+            <Button
+              title="Save Student"
+              loading={submitting}
+              onPress={handleSaveNewStudent}
+              style={{ marginTop: 10 }}
+            />
           </View>
-        </Modal>
-      </View>
-    </ResponsiveLayout>
+        </ModalDialog>
+
+        {/* Edit Student Modal */}
+        <ModalDialog
+          visible={showEditModal}
+          onClose={() => setShowEditModal(false)}
+          title="Edit Candidate Details"
+          subtitle={`USN: ${editingStudent?.usn}`}
+          maxWidth={460}
+        >
+          <View style={styles.modalForm}>
+            <Input
+              label="Full Name *"
+              value={formName}
+              onChangeText={setFormName}
+            />
+            <Input
+              label="Email Address *"
+              value={formEmail}
+              onChangeText={setFormEmail}
+              keyboardType="email-address"
+              autoCapitalize="none"
+            />
+            <View style={styles.modalRow}>
+              <Input
+                label="Semester *"
+                value={formSemester}
+                onChangeText={setFormSemester}
+                keyboardType="numeric"
+                style={{ flex: 1 }}
+              />
+              <Input
+                label="Section *"
+                value={formSection}
+                onChangeText={setFormSection}
+                autoCapitalize="characters"
+                style={{ flex: 1 }}
+              />
+            </View>
+            <Select
+              label="Department *"
+              value={formDeptId}
+              onChange={setFormDeptId}
+              options={departments.map((d) => ({ value: String(d.id), label: `${d.code} - ${d.name}` }))}
+            />
+            <Input
+              label="Phone Number"
+              value={formPhone}
+              onChangeText={setFormPhone}
+              keyboardType="phone-pad"
+            />
+
+            <Button
+              title="Update Candidate"
+              loading={submitting}
+              onPress={handleSaveEdit}
+              style={{ marginTop: 10 }}
+            />
+          </View>
+        </ModalDialog>
+
+        {/* Import Students from CSV Modal */}
+        <ImportStudentsDialog
+          visible={showImportModal}
+          onClose={() => setShowImportModal(false)}
+          onImported={(count) => {
+            showToast({
+              type: "success",
+              title: "Import Complete",
+              message: `Successfully imported ${count} student${count !== 1 ? "s" : ""} from CSV.`,
+            });
+            fetchStudents();
+          }}
+        />
+      </ScrollView>
+    </AppLayout>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.background,
+  scroll: {
+    padding: 20,
+    paddingBottom: 40,
+    gap: 16,
   },
-  containerDesktop: {
-    maxWidth: 1140,
+  scrollDesktop: {
+    maxWidth: 1160,
     width: "100%",
     alignSelf: "center",
   },
-  addBtn: {
-    backgroundColor: colors.primary,
-    borderRadius: 7,
-    paddingVertical: 7,
-    paddingHorizontal: 12,
+  filterCard: {
+    gap: 12,
+  },
+  filterTopRow: {
     flexDirection: "row",
-    alignItems: "center",
+    gap: 10,
   },
-  addBtnText: {
-    color: "#FFFFFF",
-    fontSize: 12,
-    fontWeight: typography.weights.bold,
-  },
-  filterSection: {
-    padding: 16,
-    paddingBottom: 8,
-    backgroundColor: colors.surface,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
-  searchBox: {
+  deptChipScroll: {
     flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: colors.surfaceAlt,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: colors.border,
-    paddingHorizontal: 10,
-    height: 40,
-    marginBottom: 10,
+    gap: 8,
   },
-  searchInput: {
-    flex: 1,
-    fontSize: 13,
-    color: colors.text,
-  },
-  deptChipList: {
-    paddingBottom: 4,
-    gap: 6,
-  },
-  deptChip: {
+  filterChip: {
     paddingVertical: 5,
-    paddingHorizontal: 10,
-    borderRadius: 6,
+    paddingHorizontal: 12,
+    borderRadius: radii.sm,
     backgroundColor: colors.surfaceAlt,
     borderWidth: 1,
     borderColor: colors.border,
+    marginRight: 6,
+    cursor: "pointer",
   },
-  deptChipActive: {
+  filterChipActive: {
     backgroundColor: colors.primaryLight,
     borderColor: colors.primary,
   },
-  deptChipText: {
-    fontSize: 11,
-    fontWeight: typography.weights.semibold,
+  filterChipText: {
+    fontSize: 12,
+    fontWeight: "500",
     color: colors.textSecondary,
   },
-  deptChipTextActive: {
+  filterChipTextActive: {
     color: colors.primaryDark,
-    fontWeight: typography.weights.bold,
+    fontWeight: "700",
   },
-  listContent: {
-    padding: 16,
-    paddingBottom: 40,
-    gap: 10,
-  },
-  studentCard: {
-    backgroundColor: colors.surface,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: colors.border,
-    padding: 14,
-    ...shadows.sm,
-  },
-  cardHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 6,
-  },
-  usnBadge: {
+  usnChip: {
     backgroundColor: colors.primaryLight,
     paddingHorizontal: 8,
     paddingVertical: 3,
-    borderRadius: 4,
+    borderRadius: radii.xs,
+    alignSelf: "flex-start",
   },
-  usnText: {
-    fontSize: 12,
-    fontWeight: typography.weights.bold,
+  usnChipText: {
+    fontSize: 11,
+    fontWeight: "700",
     color: colors.primaryDark,
   },
-  studentName: {
-    fontSize: 14,
-    fontWeight: typography.weights.bold,
+  nameText: {
+    fontSize: 13,
+    fontWeight: "600",
     color: colors.text,
-    marginBottom: 4,
   },
-  metaRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    marginBottom: 10,
+  subText: {
+    fontSize: 11,
+    color: colors.textSecondary,
+    marginTop: 1,
   },
-  metaText: {
-    fontSize: 12,
+  deptBadge: {
+    backgroundColor: colors.surfaceAlt,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: radii.xs,
+    alignSelf: "flex-start",
+  },
+  deptBadgeText: {
+    fontSize: 11,
+    fontWeight: "600",
     color: colors.textSecondary,
   },
-  cardFooter: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingTop: 8,
-    borderTopWidth: 1,
-    borderTopColor: colors.borderLight,
+  semText: {
+    fontSize: 12,
+    color: colors.textSecondary,
   },
   statusPill: {
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: radii.xs,
+    alignSelf: "flex-start",
+  },
+  statusActive: {
+    backgroundColor: colors.successLight,
+  },
+  statusInactive: {
+    backgroundColor: colors.warningLight,
+  },
+  statusPillText: {
+    fontSize: 10,
+    fontWeight: "700",
+    letterSpacing: 0.4,
+  },
+  statusTextActive: {
+    color: colors.successText,
+  },
+  statusTextInactive: {
+    color: colors.warningText,
+  },
+  actionsCell: {
     flexDirection: "row",
+    gap: 6,
+  },
+  actionBtn: {
+    padding: 6,
+    borderRadius: radii.xs,
+    backgroundColor: colors.surfaceAlt,
+    cursor: "pointer",
+  },
+  actionBtnDanger: {
+    backgroundColor: colors.dangerLight,
+  },
+  drawerBody: {
     alignItems: "center",
+    gap: 12,
   },
-  statusDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    marginRight: 6,
-  },
-  statusText: {
-    fontSize: 11,
-    fontWeight: typography.weights.semibold,
-    color: colors.textSecondary,
-  },
-  deleteBtn: {
-    flexDirection: "row",
+  drawerAvatarBox: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: colors.primaryLight,
     alignItems: "center",
-    paddingVertical: 4,
-    paddingHorizontal: 8,
-    borderRadius: 6,
-    backgroundColor: colors.errorLight,
-  },
-  deleteBtnText: {
-    fontSize: 11,
-    fontWeight: typography.weights.semibold,
-    color: colors.errorText,
-    marginLeft: 4,
-  },
-  modalBackdrop: {
-    flex: 1,
-    backgroundColor: "rgba(15, 23, 42, 0.5)",
     justifyContent: "center",
-    alignItems: "center",
-    padding: 16,
+    marginBottom: 4,
   },
-  modalCard: {
-    width: "100%",
-    maxWidth: 480,
-    backgroundColor: colors.surface,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: colors.border,
-    padding: 20,
-    ...shadows.lg,
+  drawerAvatarText: {
+    fontSize: 26,
+    fontWeight: "700",
+    color: colors.primaryDark,
   },
-  modalHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "flex-start",
-    marginBottom: 16,
-  },
-  modalTitle: {
-    fontSize: 16,
-    fontWeight: typography.weights.extrabold,
+  drawerName: {
+    fontSize: 17,
+    fontWeight: "700",
     color: colors.text,
   },
-  modalSub: {
+  drawerUsn: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: colors.primary,
+  },
+  drawerMetaList: {
+    width: "100%",
+    backgroundColor: colors.surfaceAlt,
+    borderRadius: radii.md,
+    padding: 14,
+    gap: 12,
+    marginVertical: 10,
+  },
+  drawerMetaItem: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  drawerMetaLabel: {
     fontSize: 12,
     color: colors.textSecondary,
-    marginTop: 2,
+  },
+  drawerMetaVal: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: colors.text,
+  },
+  drawerBtnRow: {
+    width: "100%",
+    flexDirection: "row",
+    gap: 10,
   },
   modalForm: {
     gap: 12,
   },
-  modalInputGroup: {},
-  modalInputRow: {
+  modalRow: {
     flexDirection: "row",
+    gap: 10,
   },
-  modalLabel: {
-    fontSize: 11,
-    fontWeight: typography.weights.bold,
-    color: colors.text,
-    marginBottom: 4,
-  },
-  modalInput: {
-    height: 40,
-    backgroundColor: colors.surfaceAlt,
-    borderRadius: 6,
-    borderWidth: 1,
-    borderColor: colors.border,
-    paddingHorizontal: 10,
-    fontSize: 13,
-    color: colors.text,
-  },
-  deptPickerRow: {
+  headerActionsRow: {
     flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 6,
-  },
-  deptPickerChip: {
-    paddingVertical: 5,
-    paddingHorizontal: 10,
-    borderRadius: 6,
-    backgroundColor: colors.surfaceAlt,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  deptPickerChipActive: {
-    backgroundColor: colors.primaryLight,
-    borderColor: colors.primary,
-  },
-  deptPickerChipText: {
-    fontSize: 11,
-    fontWeight: typography.weights.semibold,
-    color: colors.textSecondary,
-  },
-  deptPickerChipTextActive: {
-    color: colors.primaryDark,
-    fontWeight: typography.weights.bold,
-  },
-  saveBtn: {
-    height: 44,
-    backgroundColor: colors.primary,
-    borderRadius: 8,
     alignItems: "center",
-    justifyContent: "center",
-    marginTop: 8,
-  },
-  btnDisabled: {
-    opacity: 0.65,
-  },
-  saveBtnText: {
-    color: "#FFFFFF",
-    fontSize: 13,
-    fontWeight: typography.weights.bold,
+    gap: 8,
   },
 });

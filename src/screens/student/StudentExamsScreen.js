@@ -1,159 +1,526 @@
-import React, { useState, useEffect } from "react";
-import { View, Text, StyleSheet, FlatList, RefreshControl, useWindowDimensions } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
-import { Badge } from "../../components/Badge";
-import { EmptyState } from "../../components/EmptyState";
-import { LoadingSpinner } from "../../components/LoadingSpinner";
-import { colors, typography, shadows } from "../../theme/colors";
+import React, { useState, useEffect, useCallback } from "react";
+import {
+  View,
+  Text,
+  StyleSheet,
+  FlatList,
+  RefreshControl,
+  useWindowDimensions,
+} from "react-native";
+import { Ionicons } from "@expo/vector-icons";
+import { AppLayout } from "../../components/layout/AppLayout";
+import { Card } from "../../components/common/Card";
+import { Button } from "../../components/common/Button";
+import { Tabs } from "../../components/common/Tabs";
+import { EmptyState } from "../../components/common/EmptyState";
+import { LoadingSkeleton } from "../../components/common/LoadingSkeleton";
+import { ModalDialog } from "../../components/common/ModalDialog";
+import { SearchInput } from "../../components/common/Input";
+import { Touchable } from "../../components/common/Motion";
+import { colors, textStyles, spacing, radii, shadows, tones } from "../../theme/tokens";
 import api from "../../services/api";
 
-export default function StudentExamsScreen() {
+const TAB_ITEMS = [
+  { key: "all", label: "All Exams" },
+  { key: "upcoming", label: "Upcoming" },
+  { key: "completed", label: "Past / Completed" },
+];
+
+export default function StudentExamsScreen({ navigation }) {
   const { width } = useWindowDimensions();
   const isDesktop = width >= 768;
 
   const [exams, setExams] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [selectedTab, setSelectedTab] = useState("all");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [ticketModalExam, setTicketModalExam] = useState(null);
 
-  const fetchExams = async () => {
+  const fetchExams = useCallback(async () => {
     try {
       const res = await api.get("/student/exams");
-      if (res.data?.success) {
-        setExams(res.data.exams || []);
+      const data = res.data || res;
+      if (data.success) {
+        setExams(data.exams || []);
       }
     } catch (err) {
-      console.log("Error loading exams:", err?.message);
+      console.log("Error loading student exams:", err?.message);
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     fetchExams();
-  }, []);
+  }, [fetchExams]);
 
-  if (loading) return <LoadingSpinner message="Fetching exam registrations..." />;
+  const todayStr = new Date().toISOString().split("T")[0];
+
+  const filteredExams = exams.filter((exam) => {
+    // Tab filter
+    if (selectedTab === "upcoming" && exam.exam_date < todayStr) return false;
+    if (selectedTab === "completed" && exam.exam_date >= todayStr) return false;
+
+    // Search query
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      const code = (exam.course_code || exam.subject_code || "").toLowerCase();
+      const name = (exam.course_name || exam.name || "").toLowerCase();
+      const hall = (exam.hall_code || exam.hall_name || "").toLowerCase();
+      if (!code.includes(q) && !name.includes(q) && !hall.includes(q)) {
+        return false;
+      }
+    }
+    return true;
+  });
 
   return (
-    <SafeAreaView style={styles.safeArea} edges={["top", "bottom"]}>
-      <View style={styles.topHeader}>
-        <Text style={styles.headerTitle}>My Examination Schedule</Text>
-        <Badge label={`${exams.length} EXAMS`} variant="info" size="sm" />
+    <AppLayout
+      title="Examination Schedule"
+      subtitle={`${exams.length} examinations registered`}
+      currentRouteName="StudentExams"
+      actions={
+        <Button
+          title="Refresh"
+          variant="secondary"
+          size="sm"
+          onPress={() => {
+            setLoading(true);
+            fetchExams();
+          }}
+          icon={<Ionicons name="refresh" size={14} color={colors.text} />}
+        />
+      }
+    >
+      <View style={[styles.container, isDesktop && styles.containerDesktop]}>
+        <View style={styles.controlsRow}>
+          <SearchInput
+            placeholder="Search exam code, course, or hall..."
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            containerStyle={{ flex: 1 }}
+          />
+        </View>
+
+        <Tabs
+          items={TAB_ITEMS}
+          activeKey={selectedTab}
+          onChange={setSelectedTab}
+          style={{ marginBottom: spacing.md }}
+        />
+
+        {loading ? (
+          <View style={{ gap: spacing.md }}>
+            <LoadingSkeleton height={90} />
+            <LoadingSkeleton height={90} />
+            <LoadingSkeleton height={90} />
+          </View>
+        ) : (
+          <FlatList
+            data={filteredExams}
+            keyExtractor={(item, index) => String(item.id || index)}
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={styles.listContent}
+            refreshControl={
+              <RefreshControl
+                refreshing={refreshing}
+                onRefresh={() => {
+                  setRefreshing(true);
+                  fetchExams();
+                }}
+              />
+            }
+            ListEmptyComponent={
+              <EmptyState
+                iconName="calendar-outline"
+                title="No Examinations Found"
+                message={
+                  searchQuery
+                    ? `No examinations matching "${searchQuery}".`
+                    : "There are no examinations matching the selected filter."
+                }
+              />
+            }
+            renderItem={({ item }) => {
+              const hasSeat = Boolean(
+                item.has_seating && item.seat_label && item.seat_label !== "TBA"
+              );
+              const isPast = item.exam_date < todayStr;
+
+              return (
+                <Touchable
+                  style={styles.examCard}
+                  onPress={() => setTicketModalExam(item)}
+                >
+                  <View style={styles.cardHeader}>
+                    <View style={styles.codeGroup}>
+                      <View style={styles.codeBadge}>
+                        <Text style={styles.codeText}>
+                          {item.course_code || item.subject_code}
+                        </Text>
+                      </View>
+                      <Text style={styles.examDate}>
+                        📅 {item.exam_date}
+                      </Text>
+                    </View>
+
+                    <View
+                      style={[
+                        styles.statusPill,
+                        {
+                          backgroundColor: hasSeat
+                            ? colors.pastelMint
+                            : isPast
+                            ? colors.surfaceAlt
+                            : colors.pastelBlue,
+                          borderColor: hasSeat
+                            ? colors.successBorder
+                            : colors.border,
+                        },
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.statusPillText,
+                          {
+                            color: hasSeat
+                              ? colors.successText
+                              : isPast
+                              ? colors.textMuted
+                              : colors.primaryDark,
+                          },
+                        ]}
+                      >
+                        {hasSeat ? "SEAT ASSIGNED" : isPast ? "COMPLETED" : "SCHEDULED"}
+                      </Text>
+                    </View>
+                  </View>
+
+                  <Text style={styles.courseName}>{item.course_name || item.name}</Text>
+
+                  <View style={styles.cardFooter}>
+                    <View style={styles.timeInfo}>
+                      <Ionicons name="time-outline" size={14} color={colors.textSecondary} />
+                      <Text style={styles.timeText}>
+                        {item.start_time?.slice(0, 5)} - {item.end_time?.slice(0, 5) || "13:00"}
+                      </Text>
+                    </View>
+
+                    {hasSeat ? (
+                      <View style={styles.seatBadge}>
+                        <Ionicons name="business-outline" size={13} color={colors.successText} />
+                        <Text style={styles.seatBadgeText}>
+                          {item.hall_code || item.hall_name} • Seat {item.seat_label}
+                        </Text>
+                      </View>
+                    ) : (
+                      <Text style={styles.pendingText}>Seating Pending</Text>
+                    )}
+                  </View>
+                </Touchable>
+              );
+            }}
+          />
+        )}
       </View>
 
-      <FlatList
-        data={exams}
-        keyExtractor={(item, index) => String(item.id || index)}
-        contentContainerStyle={[
-          styles.list,
-          isDesktop && styles.listDesktop,
-        ]}
-        showsVerticalScrollIndicator={false}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); fetchExams(); }} />}
-        ListEmptyComponent={
-          <EmptyState
-            iconName="calendar-outline"
-            title="No Exams Found"
-            message="You have no registered examinations for this academic semester."
-          />
-        }
-        renderItem={({ item }) => {
-          const hasSeat = Boolean(item.has_seating && item.seat_label && item.seat_label !== "TBA");
-          const isPublished = Boolean(item.is_published);
-          return (
-            <View style={styles.examListCard}>
-              <View style={styles.examCardTop}>
-                <Text style={styles.examCardCode}>{item.course_code || item.subject_code}</Text>
-                <Badge
-                  label={hasSeat ? "SEAT ALLOCATED" : isPublished ? "PUBLISHED" : "SCHEDULED"}
-                  variant={hasSeat ? "success" : "info"}
-                  size="sm"
-                />
+      {/* Hall Ticket / Pass Detail Modal */}
+      <ModalDialog
+        visible={Boolean(ticketModalExam)}
+        onClose={() => setTicketModalExam(null)}
+        title="Examination Pass Details"
+      >
+        {ticketModalExam && (
+          <View style={styles.modalContent}>
+            <View style={styles.passHeader}>
+              <View style={styles.passLogoCircle}>
+                <Ionicons name="school" size={24} color={colors.primary} />
               </View>
-              <Text style={styles.examCardTitle}>{item.course_name || item.name}</Text>
-              <View style={styles.examCardBottom}>
-                <Text style={styles.examCardDateTime}>
-                  📅 {item.exam_date} • {item.start_time?.slice(0, 5) || "10:00"}
+              <View style={{ flex: 1 }}>
+                <Text style={styles.passInstitution}>EXAMINATION MANAGEMENT CELL</Text>
+                <Text style={styles.passCourse}>
+                  {ticketModalExam.course_name || ticketModalExam.name}
                 </Text>
-                <Text style={[styles.examCardSeatText, { color: hasSeat ? colors.successText : colors.textMuted }]}>
-                  {hasSeat ? `Hall ${item.hall_code} • Seat ${item.seat_label}` : "Seating Pending"}
+                <Text style={styles.passCode}>
+                  Course Code: {ticketModalExam.course_code || ticketModalExam.subject_code}
                 </Text>
               </View>
             </View>
-          );
-        }}
-      />
-    </SafeAreaView>
+
+            <View style={styles.passDetailsGrid}>
+              <View style={styles.gridRow}>
+                <View style={styles.gridCol}>
+                  <Text style={styles.gridLabel}>Exam Date</Text>
+                  <Text style={styles.gridVal}>{ticketModalExam.exam_date}</Text>
+                </View>
+                <View style={styles.gridCol}>
+                  <Text style={styles.gridLabel}>Session Timing</Text>
+                  <Text style={styles.gridVal}>
+                    {ticketModalExam.start_time?.slice(0, 5)} - {ticketModalExam.end_time?.slice(0, 5) || "13:00"}
+                  </Text>
+                </View>
+              </View>
+
+              <View style={styles.passSeatBox}>
+                <Text style={styles.passSeatLabel}>OFFICIAL SEATING ALLOCATION</Text>
+                {ticketModalExam.has_seating && ticketModalExam.seat_label && ticketModalExam.seat_label !== "TBA" ? (
+                  <View style={styles.passSeatContent}>
+                    <Text style={styles.passSeatHero}>{ticketModalExam.seat_label}</Text>
+                    <View>
+                      <Text style={styles.passHallTitle}>
+                        {ticketModalExam.hall_name || `Hall ${ticketModalExam.hall_code}`}
+                      </Text>
+                      <Text style={styles.passHallSub}>
+                        {ticketModalExam.building || "Academic Complex"} (Floor {ticketModalExam.floor ?? 1})
+                      </Text>
+                    </View>
+                  </View>
+                ) : (
+                  <Text style={styles.passPendingText}>
+                    Seating arrangement is currently being processed by the examination committee.
+                  </Text>
+                )}
+              </View>
+            </View>
+
+            <View style={styles.guidelinesBox}>
+              <Text style={styles.guidelinesTitle}>Examination Guidelines:</Text>
+              <Text style={styles.guidelineItem}>• Candidates must arrive 15 minutes before exam commencement.</Text>
+              <Text style={styles.guidelineItem}>• College ID card and Hall Pass must be produced on demand.</Text>
+              <Text style={styles.guidelineItem}>• Electronic gadgets, mobile phones, and smart watches are strictly prohibited.</Text>
+            </View>
+
+            <Button
+              title="Close"
+              variant="secondary"
+              size="md"
+              onPress={() => setTicketModalExam(null)}
+              style={{ marginTop: spacing.md }}
+            />
+          </View>
+        )}
+      </ModalDialog>
+    </AppLayout>
   );
 }
 
 const styles = StyleSheet.create({
-  safeArea: {
+  container: {
     flex: 1,
-    backgroundColor: colors.background,
+    padding: spacing.md,
   },
-  topHeader: {
-    height: 54,
-    backgroundColor: colors.surface,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-    paddingHorizontal: 16,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
-  headerTitle: {
-    fontSize: 15,
-    fontWeight: typography.weights.bold,
-    color: colors.text,
-  },
-  list: {
-    padding: 16,
-    paddingBottom: 40,
-    gap: 10,
-  },
-  listDesktop: {
-    maxWidth: 680,
+  containerDesktop: {
+    maxWidth: 900,
     width: "100%",
     alignSelf: "center",
+    padding: spacing.xl,
   },
-  examListCard: {
+  controlsRow: {
+    marginBottom: spacing.md,
+  },
+  listContent: {
+    gap: spacing.sm,
+    paddingBottom: spacing["3xl"],
+  },
+  examCard: {
     backgroundColor: colors.surface,
-    borderRadius: 12,
+    borderRadius: radii.lg,
     borderWidth: 1,
     borderColor: colors.border,
-    padding: 14,
+    padding: spacing.md,
+    gap: spacing.xs,
     ...shadows.sm,
   },
-  examCardTop: {
+  cardHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
   },
-  examCardCode: {
-    fontSize: 12,
-    fontWeight: typography.weights.bold,
+  codeGroup: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+  },
+  codeBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    backgroundColor: colors.pastelBlue,
+    borderRadius: radii.sm,
+    borderWidth: 1,
+    borderColor: colors.primaryMuted,
+  },
+  codeText: {
+    ...textStyles.caption,
+    fontWeight: "700",
     color: colors.primaryDark,
   },
-  examCardTitle: {
-    fontSize: 14,
-    fontWeight: typography.weights.bold,
-    color: colors.text,
-    marginTop: 4,
-    marginBottom: 8,
+  examDate: {
+    ...textStyles.caption,
+    color: colors.textSecondary,
   },
-  examCardBottom: {
+  statusPill: {
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 2,
+    borderRadius: radii.full,
+    borderWidth: 1,
+  },
+  statusPillText: {
+    ...textStyles.overline,
+    fontSize: 10,
+    fontWeight: "700",
+  },
+  courseName: {
+    ...textStyles.title,
+    fontSize: 15,
+    color: colors.text,
+    marginVertical: 2,
+  },
+  cardFooter: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
+    marginTop: 4,
   },
-  examCardDateTime: {
-    fontSize: 11,
+  timeInfo: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+  },
+  timeText: {
+    ...textStyles.caption,
     color: colors.textSecondary,
   },
-  examCardSeatText: {
-    fontSize: 11,
-    fontWeight: typography.weights.bold,
+  seatBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: radii.sm,
+    backgroundColor: colors.pastelMint,
+    borderWidth: 1,
+    borderColor: colors.successBorder,
+  },
+  seatBadgeText: {
+    ...textStyles.caption,
+    fontWeight: "700",
+    color: colors.successText,
+  },
+  pendingText: {
+    ...textStyles.caption,
+    color: colors.textMuted,
+    fontStyle: "italic",
+  },
+  modalContent: {
+    gap: spacing.md,
+  },
+  passHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.md,
+    paddingBottom: spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  passLogoCircle: {
+    width: 44,
+    height: 44,
+    borderRadius: radii.md,
+    backgroundColor: colors.primaryLight,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  passInstitution: {
+    ...textStyles.overline,
+    color: colors.primaryDark,
+    letterSpacing: 0.8,
+  },
+  passCourse: {
+    ...textStyles.title,
+    color: colors.text,
+  },
+  passCode: {
+    ...textStyles.caption,
+    color: colors.textSecondary,
+  },
+  passDetailsGrid: {
+    gap: spacing.md,
+  },
+  gridRow: {
+    flexDirection: "row",
+    gap: spacing.md,
+  },
+  gridCol: {
+    flex: 1,
+  },
+  gridLabel: {
+    ...textStyles.caption,
+    color: colors.textMuted,
+  },
+  gridVal: {
+    ...textStyles.body,
+    fontWeight: "600",
+    color: colors.text,
+    marginTop: 2,
+  },
+  passSeatBox: {
+    backgroundColor: colors.pastelMint,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.successBorder,
+    padding: spacing.md,
+    gap: spacing.xs,
+  },
+  passSeatLabel: {
+    ...textStyles.overline,
+    color: colors.successText,
+    letterSpacing: 0.8,
+  },
+  passSeatContent: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.md,
+    marginTop: 4,
+  },
+  passSeatHero: {
+    ...textStyles.display,
+    fontSize: 28,
+    fontWeight: "800",
+    color: colors.successText,
+  },
+  passHallTitle: {
+    ...textStyles.label,
+    fontWeight: "700",
+    color: colors.text,
+  },
+  passHallSub: {
+    ...textStyles.caption,
+    color: colors.textSecondary,
+  },
+  passPendingText: {
+    ...textStyles.body,
+    color: colors.warningText,
+    marginTop: 4,
+  },
+  guidelinesBox: {
+    backgroundColor: colors.surfaceAlt,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.md,
+    gap: 4,
+  },
+  guidelinesTitle: {
+    ...textStyles.label,
+    fontWeight: "600",
+    color: colors.text,
+    marginBottom: 2,
+  },
+  guidelineItem: {
+    ...textStyles.caption,
+    color: colors.textSecondary,
+    lineHeight: 16,
   },
 });

@@ -195,6 +195,7 @@ export const studentApi = {
   update: (id, data) => api.patch(`/students/${id}`, data),
   delete: (id) => api.delete(`/students/${id}`),
   bulkCreate: (data) => api.post("/students/bulk", data),
+  importCsv: (data) => api.post("/students/import", data),
 };
 
 export const examApi = {

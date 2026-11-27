@@ -3,44 +3,53 @@ import {
   View,
   Text,
   StyleSheet,
-  FlatList,
-  TextInput,
-  Pressable,
+  ScrollView,
   RefreshControl,
-  Modal,
-  ActivityIndicator,
   useWindowDimensions,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { ResponsiveLayout } from "../../components/ResponsiveLayout";
-import { Badge } from "../../components/Badge";
-import { LoadingSpinner } from "../../components/LoadingSpinner";
-import { EmptyState } from "../../components/EmptyState";
-import { colors, typography, shadows } from "../../theme/colors";
+import { AppLayout } from "../../components/layout/AppLayout";
+import { Card } from "../../components/common/Card";
+import { Button } from "../../components/common/Button";
+import { SearchInput, Input } from "../../components/common/Input";
+import { ModalDialog } from "../../components/common/ModalDialog";
+import { EmptyState } from "../../components/common/EmptyState";
+import { LoadingSkeleton } from "../../components/common/LoadingSkeleton";
+import { colors, radii, textStyles, shadows } from "../../theme/tokens";
 import { showAlert } from "../../utils/alerts";
-import api, { departmentApi } from "../../services/api";
+import api, { departmentApi, facultyApi } from "../../services/api";
 
-export default function DepartmentManagementScreen({ navigation }) {
+export default function DepartmentManagementScreen() {
   const { width } = useWindowDimensions();
-  const isDesktop = width >= 900;
+  const isDesktop = width >= 768;
 
   const [departments, setDepartments] = useState([]);
+  const [faculty, setFaculty] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [search, setSearch] = useState("");
 
   // Add Department Modal
   const [showAddModal, setShowAddModal] = useState(false);
-  const [creating, setCreating] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
   const [code, setCode] = useState("");
   const [name, setName] = useState("");
 
-  const fetchDepartments = async () => {
+  const loadData = async () => {
     try {
-      const res = await departmentApi.getAll();
-      const data = res.data || res;
-      if (data.success) {
-        setDepartments(data.departments || []);
+      const [deptRes, facRes] = await Promise.allSettled([
+        departmentApi.getAll(),
+        facultyApi.getAll(),
+      ]);
+
+      if (deptRes.status === "fulfilled") {
+        const d = deptRes.value.data || deptRes.value;
+        setDepartments(d.departments || []);
+      }
+
+      if (facRes.status === "fulfilled") {
+        const f = facRes.value.data || facRes.value;
+        setFaculty(f.faculty || []);
       }
     } catch (err) {
       console.log("Error loading departments:", err?.message);
@@ -51,7 +60,7 @@ export default function DepartmentManagementScreen({ navigation }) {
   };
 
   useEffect(() => {
-    fetchDepartments();
+    loadData();
   }, []);
 
   const handleCreateDepartment = async () => {
@@ -63,26 +72,26 @@ export default function DepartmentManagementScreen({ navigation }) {
       return;
     }
 
-    setCreating(true);
+    setSubmitting(true);
     try {
-      const res = await api.post("/departments", {
+      const res = await departmentApi.create({
         code: trimmedCode,
         name: trimmedName,
       });
       const data = res.data || res;
       if (data.success) {
-        showAlert("Department Created", `Department ${trimmedName} (${trimmedCode}) registered successfully!`);
+        showAlert("Department Added", `Department ${trimmedName} (${trimmedCode}) created successfully!`);
         setShowAddModal(false);
         setCode("");
         setName("");
-        fetchDepartments();
+        loadData();
       } else {
-        showAlert("Error", data.error || "Could not create department.");
+        showAlert("Creation Error", data.error || "Could not create department.");
       }
     } catch (err) {
-      showAlert("Creation Failed", err.response?.data?.error || err.message || "Failed to create department.");
+      showAlert("Error", err.response?.data?.error || err.message || "Failed to create department.");
     } finally {
-      setCreating(false);
+      setSubmitting(false);
     }
   };
 
@@ -96,291 +105,219 @@ export default function DepartmentManagementScreen({ navigation }) {
   });
 
   return (
-    <ResponsiveLayout
+    <AppLayout
       title="Academic Departments"
-      subtitle="Manage university departments and academic branches"
+      subtitle={`${departments.length} university faculties and academic branches`}
+      breadcrumb="Management / Departments"
       currentRouteName="DepartmentManagement"
       rightAction={
-        <Pressable
-          style={styles.addBtn}
+        <Button
+          title="Add Department"
+          size="sm"
+          icon={<Ionicons name="add" size={16} color="#FFFFFF" />}
           onPress={() => setShowAddModal(true)}
-        >
-          <Ionicons name="add" size={17} color="#FFFFFF" style={{ marginRight: 4 }} />
-          <Text style={styles.addBtnText}>Add Department</Text>
-        </Pressable>
+        />
       }
     >
-      <View style={[styles.container, isDesktop && styles.containerDesktop]}>
-        {/* Search */}
-        <View style={styles.filterSection}>
-          <View style={styles.searchBox}>
-            <Ionicons name="search" size={16} color={colors.textMuted} style={{ marginRight: 8 }} />
-            <TextInput
-              style={styles.searchInput}
-              placeholder="Search departments by code or name..."
-              placeholderTextColor={colors.textMuted}
-              value={search}
-              onChangeText={setSearch}
-              autoCapitalize="none"
-            />
-            {search ? (
-              <Pressable onPress={() => setSearch("")} hitSlop={8}>
-                <Ionicons name="close-circle" size={16} color={colors.textMuted} />
-              </Pressable>
-            ) : null}
-          </View>
-        </View>
-
-        {loading ? (
-          <LoadingSpinner message="Loading departments..." />
-        ) : (
-          <FlatList
-            data={filteredDepts}
-            keyExtractor={(item) => String(item.id)}
-            contentContainerStyle={styles.listContent}
-            refreshControl={
-              <RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); fetchDepartments(); }} />
-            }
-            ListEmptyComponent={
-              <EmptyState
-                iconName="business-outline"
-                title="No Departments Found"
-                message={search ? `No departments match "${search}".` : "No departments currently registered."}
-                actionLabel="Add Department"
-                onAction={() => setShowAddModal(true)}
-              />
-            }
-            renderItem={({ item }) => (
-              <View style={styles.deptCard}>
-                <View style={styles.cardHeader}>
-                  <View style={styles.deptCodeBadge}>
-                    <Text style={styles.deptCodeText}>{item.code}</Text>
-                  </View>
-                  <Badge label="ACTIVE" variant="success" size="sm" />
-                </View>
-                <Text style={styles.deptName}>{item.name}</Text>
-                <Text style={styles.deptMeta}>
-                  Academic Code: <Text style={{ fontWeight: "700", color: colors.text }}>{item.code}</Text> • ID #{item.id}
-                </Text>
-              </View>
-            )}
+      <ScrollView
+        contentContainerStyle={[
+          styles.scroll,
+          isDesktop && styles.scrollDesktop,
+        ]}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); loadData(); }} />
+        }
+      >
+        {/* Search Bar */}
+        <Card style={styles.searchCard}>
+          <SearchInput
+            value={search}
+            onChangeText={setSearch}
+            placeholder="Search departments by code or branch name..."
           />
+        </Card>
+
+        {/* Department Cards Grid */}
+        {loading ? (
+          <LoadingSkeleton height={180} />
+        ) : filteredDepts.length === 0 ? (
+          <EmptyState
+            iconName="business-outline"
+            title="No Departments Found"
+            message={search ? `No branches match "${search}".` : "No departments currently registered."}
+            actionLabel="Add Department"
+            onAction={() => setShowAddModal(true)}
+          />
+        ) : (
+          <View style={styles.grid}>
+            {filteredDepts.map((d) => {
+              // Compute faculty count client-side
+              const facultyCount = faculty.filter(
+                (f) => f.department_id === d.id || f.department_code === d.code
+              ).length;
+
+              return (
+                <Card key={d.id} style={styles.deptCard}>
+                  <View style={styles.cardTop}>
+                    <View style={styles.codeChip}>
+                      <Text style={styles.codeChipText}>{d.code}</Text>
+                    </View>
+                    <View style={styles.activePill}>
+                      <Text style={styles.activePillText}>ACTIVE</Text>
+                    </View>
+                  </View>
+
+                  <Text style={styles.deptName}>{d.name}</Text>
+
+                  <View style={styles.statsRow}>
+                    <View style={styles.statBox}>
+                      <Text style={styles.statNum}>{d.student_count || 0}</Text>
+                      <Text style={styles.statLabel}>Students</Text>
+                    </View>
+
+                    <View style={styles.statDivider} />
+
+                    <View style={styles.statBox}>
+                      <Text style={[styles.statNum, { color: colors.primaryDark }]}>{facultyCount}</Text>
+                      <Text style={styles.statLabel}>Faculty</Text>
+                    </View>
+
+                    <View style={styles.statDivider} />
+
+                    <View style={styles.statBox}>
+                      <Text style={styles.statNum}>#{d.id}</Text>
+                      <Text style={styles.statLabel}>Dept ID</Text>
+                    </View>
+                  </View>
+                </Card>
+              );
+            })}
+          </View>
         )}
 
         {/* Add Department Modal */}
-        <Modal
+        <ModalDialog
           visible={showAddModal}
-          transparent
-          animationType="fade"
-          onRequestClose={() => setShowAddModal(false)}
+          onClose={() => setShowAddModal(false)}
+          title="Create Academic Department"
+          subtitle="Register new engineering or academic branch"
+          maxWidth={440}
         >
-          <View style={styles.modalBackdrop}>
-            <View style={styles.modalCard}>
-              <View style={styles.modalHeader}>
-                <View>
-                  <Text style={styles.modalTitle}>Add Department</Text>
-                  <Text style={styles.modalSub}>Register new academic branch</Text>
-                </View>
-                <Pressable onPress={() => setShowAddModal(false)} hitSlop={8}>
-                  <Ionicons name="close" size={20} color={colors.textSecondary} />
-                </Pressable>
-              </View>
+          <View style={styles.modalForm}>
+            <Input
+              label="Department Code *"
+              placeholder="e.g. AIML, CSE, ECE"
+              value={code}
+              onChangeText={setCode}
+              autoCapitalize="characters"
+            />
+            <Input
+              label="Department Full Name *"
+              placeholder="e.g. Artificial Intelligence & Machine Learning"
+              value={name}
+              onChangeText={setName}
+            />
 
-              <View style={styles.modalForm}>
-                <View style={styles.modalInputGroup}>
-                  <Text style={styles.modalLabel}>Department Code *</Text>
-                  <TextInput
-                    style={styles.modalInput}
-                    placeholder="e.g. AIML, CSE, ECE"
-                    placeholderTextColor={colors.textMuted}
-                    value={code}
-                    onChangeText={setCode}
-                    autoCapitalize="characters"
-                  />
-                </View>
-
-                <View style={styles.modalInputGroup}>
-                  <Text style={styles.modalLabel}>Department Name *</Text>
-                  <TextInput
-                    style={styles.modalInput}
-                    placeholder="e.g. Artificial Intelligence & Machine Learning"
-                    placeholderTextColor={colors.textMuted}
-                    value={name}
-                    onChangeText={setName}
-                  />
-                </View>
-
-                <Pressable
-                  style={[styles.saveBtn, creating && styles.btnDisabled]}
-                  onPress={handleCreateDepartment}
-                  disabled={creating}
-                >
-                  {creating ? (
-                    <ActivityIndicator size="small" color="#FFFFFF" />
-                  ) : (
-                    <Text style={styles.saveBtnText}>Save Department</Text>
-                  )}
-                </Pressable>
-              </View>
-            </View>
+            <Button
+              title="Save Department"
+              loading={submitting}
+              onPress={handleCreateDepartment}
+              style={{ marginTop: 10 }}
+            />
           </View>
-        </Modal>
-      </View>
-    </ResponsiveLayout>
+        </ModalDialog>
+      </ScrollView>
+    </AppLayout>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.background,
+  scroll: {
+    padding: 20,
+    paddingBottom: 40,
+    gap: 16,
   },
-  containerDesktop: {
-    maxWidth: 1140,
+  scrollDesktop: {
+    maxWidth: 1160,
     width: "100%",
     alignSelf: "center",
   },
-  addBtn: {
-    backgroundColor: colors.primary,
-    borderRadius: 7,
-    paddingVertical: 7,
-    paddingHorizontal: 12,
+  searchCard: {
+    padding: 12,
+  },
+  grid: {
     flexDirection: "row",
-    alignItems: "center",
-  },
-  addBtnText: {
-    color: "#FFFFFF",
-    fontSize: 12,
-    fontWeight: typography.weights.bold,
-  },
-  filterSection: {
-    padding: 16,
-    backgroundColor: colors.surface,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
-  searchBox: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: colors.surfaceAlt,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: colors.border,
-    paddingHorizontal: 10,
-    height: 40,
-  },
-  searchInput: {
-    flex: 1,
-    fontSize: 13,
-    color: colors.text,
-  },
-  listContent: {
-    padding: 16,
-    paddingBottom: 40,
-    gap: 10,
+    flexWrap: "wrap",
+    gap: 14,
   },
   deptCard: {
-    backgroundColor: colors.surface,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: colors.border,
-    padding: 14,
-    ...shadows.sm,
+    flex: 1,
+    minWidth: 280,
+    maxWidth: 380,
+    gap: 12,
   },
-  cardHeader: {
+  cardTop: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 6,
   },
-  deptCodeBadge: {
+  codeChip: {
     backgroundColor: colors.primaryLight,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: radii.sm,
   },
-  deptCodeText: {
-    fontSize: 12,
-    fontWeight: typography.weights.bold,
+  codeChipText: {
+    fontSize: 13,
+    fontWeight: "700",
     color: colors.primaryDark,
   },
+  activePill: {
+    backgroundColor: colors.successLight,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: radii.xs,
+  },
+  activePillText: {
+    fontSize: 10,
+    fontWeight: "700",
+    color: colors.successText,
+    letterSpacing: 0.4,
+  },
   deptName: {
-    fontSize: 14,
-    fontWeight: typography.weights.bold,
+    fontSize: 15,
+    fontWeight: "700",
     color: colors.text,
-    marginBottom: 4,
+    letterSpacing: -0.2,
+    minHeight: 38,
   },
-  deptMeta: {
-    fontSize: 12,
-    color: colors.textSecondary,
-  },
-  modalBackdrop: {
-    flex: 1,
-    backgroundColor: "rgba(15, 23, 42, 0.5)",
-    justifyContent: "center",
-    alignItems: "center",
-    padding: 16,
-  },
-  modalCard: {
-    width: "100%",
-    maxWidth: 440,
-    backgroundColor: colors.surface,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: colors.border,
-    padding: 20,
-    ...shadows.lg,
-  },
-  modalHeader: {
+  statsRow: {
     flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "flex-start",
-    marginBottom: 16,
+    backgroundColor: colors.surfaceAlt,
+    borderRadius: radii.md,
+    padding: 10,
   },
-  modalTitle: {
+  statBox: {
+    flex: 1,
+    alignItems: "center",
+  },
+  statNum: {
     fontSize: 16,
-    fontWeight: typography.weights.extrabold,
+    fontWeight: "700",
     color: colors.text,
   },
-  modalSub: {
-    fontSize: 12,
+  statLabel: {
+    fontSize: 10,
     color: colors.textSecondary,
-    marginTop: 2,
+    marginTop: 1,
+  },
+  statDivider: {
+    width: 1,
+    backgroundColor: colors.border,
+    marginHorizontal: 8,
   },
   modalForm: {
     gap: 12,
-  },
-  modalInputGroup: {},
-  modalLabel: {
-    fontSize: 11,
-    fontWeight: typography.weights.bold,
-    color: colors.text,
-    marginBottom: 4,
-  },
-  modalInput: {
-    height: 40,
-    backgroundColor: colors.surfaceAlt,
-    borderRadius: 6,
-    borderWidth: 1,
-    borderColor: colors.border,
-    paddingHorizontal: 10,
-    fontSize: 13,
-    color: colors.text,
-  },
-  saveBtn: {
-    height: 44,
-    backgroundColor: colors.primary,
-    borderRadius: 8,
-    alignItems: "center",
-    justifyContent: "center",
-    marginTop: 8,
-  },
-  btnDisabled: {
-    opacity: 0.65,
-  },
-  saveBtnText: {
-    color: "#FFFFFF",
-    fontSize: 13,
-    fontWeight: typography.weights.bold,
   },
 });

@@ -3,18 +3,23 @@ import {
   View,
   Text,
   StyleSheet,
-  Pressable,
   ScrollView,
   StatusBar,
   useWindowDimensions,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
-import { colors, typography, shadows } from "../../theme/colors";
+import { colors, textStyles, spacing, radii, shadows } from "../../theme/tokens";
+import { Button } from "../../components/common/Button";
+import { FadeIn } from "../../components/common/Motion";
 
 export default function SplashScreen({ navigation }) {
   const { width } = useWindowDimensions();
   const isDesktop = width >= 768;
+
+  React.useEffect(() => {
+    navigation.replace("PublicFindSeat");
+  }, [navigation]);
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -27,7 +32,7 @@ export default function SplashScreen({ navigation }) {
         ]}
         showsVerticalScrollIndicator={false}
       >
-        <View style={[styles.mainCard, isDesktop && styles.mainCardDesktop]}>
+        <FadeIn delay={60} style={[styles.mainCard, isDesktop && styles.mainCardDesktop]}>
           {/* Top Institutional Badge */}
           <View style={styles.institutionBadge}>
             <Ionicons
@@ -44,7 +49,7 @@ export default function SplashScreen({ navigation }) {
           {/* Logo & Emblem */}
           <View style={styles.logoRing}>
             <View style={styles.logoInner}>
-              <Ionicons name="school" size={36} color="#FFFFFF" />
+              <Ionicons name="school" size={36} color={colors.textInverse} />
             </View>
           </View>
 
@@ -68,42 +73,37 @@ export default function SplashScreen({ navigation }) {
               <Text style={styles.featurePillText}>Zero Branch Overlap</Text>
             </View>
             <View style={styles.featurePill}>
-              <Ionicons name="search-outline" size={14} color={colors.info} style={{ marginRight: 6 }} />
+              <Ionicons name="search-outline" size={14} color={colors.accent} style={{ marginRight: 6 }} />
               <Text style={styles.featurePillText}>Instant USN Search</Text>
             </View>
           </View>
 
           {/* Primary Action Buttons */}
           <View style={styles.actionsContainer}>
-            <Pressable
-              style={({ pressed }) => [
-                styles.primaryBtn,
-                pressed && styles.btnPressed,
-              ]}
+            <Button
+              title="Sign In to Portal"
+              variant="primary"
+              size="lg"
               onPress={() => navigation.navigate("Login")}
-            >
-              <Ionicons name="log-in-outline" size={18} color="#FFFFFF" style={{ marginRight: 8 }} />
-              <Text style={styles.primaryBtnText}>Sign In to Portal</Text>
-              <Ionicons name="arrow-forward" size={16} color="#FFFFFF" style={{ marginLeft: 6 }} />
-            </Pressable>
+              icon={<Ionicons name="log-in-outline" size={18} color={colors.textInverse} />}
+              style={{ width: "100%" }}
+            />
 
-            <Pressable
-              style={({ pressed }) => [
-                styles.secondaryBtn,
-                pressed && styles.btnPressedSecondary,
-              ]}
+            <Button
+              title="Quick Seat Search (No Login)"
+              variant="outline"
+              size="md"
               onPress={() => navigation.navigate("PublicFindSeat")}
-            >
-              <Ionicons name="search-outline" size={17} color={colors.text} style={{ marginRight: 8 }} />
-              <Text style={styles.secondaryBtnText}>Quick Seat Search (No Login)</Text>
-            </Pressable>
+              icon={<Ionicons name="search-outline" size={16} color={colors.text} />}
+              style={{ width: "100%", marginTop: spacing.sm }}
+            />
           </View>
 
           {/* Footer Note */}
           <Text style={styles.footerText}>
             ExamEase Enterprise • Academic Year 2025–26
           </Text>
-        </View>
+        </FadeIn>
       </ScrollView>
     </SafeAreaView>
   );
@@ -118,146 +118,107 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     justifyContent: "center",
     alignItems: "center",
-    padding: 20,
+    padding: spacing.lg,
   },
   scrollContentDesktop: {
-    paddingVertical: 48,
+    paddingVertical: spacing["3xl"],
   },
   mainCard: {
     width: "100%",
     maxWidth: 520,
     backgroundColor: colors.surface,
-    borderRadius: 20,
+    borderRadius: radii.xl,
     borderWidth: 1,
     borderColor: colors.border,
-    padding: 28,
+    padding: spacing.xl,
     alignItems: "center",
     ...shadows.md,
   },
   mainCardDesktop: {
-    padding: 40,
+    padding: spacing["2xl"],
   },
   institutionBadge: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 12,
+    paddingHorizontal: spacing.md,
     paddingVertical: 5,
-    borderRadius: 20,
+    borderRadius: radii.full,
     backgroundColor: colors.primaryLight,
     borderWidth: 1,
     borderColor: colors.primaryMuted,
-    marginBottom: 20,
+    marginBottom: spacing.lg,
   },
   institutionBadgeText: {
-    fontSize: 10,
-    fontWeight: typography.weights.bold,
+    ...textStyles.overline,
     color: colors.primaryDark,
     letterSpacing: 0.8,
   },
   logoRing: {
-    width: 76,
-    height: 76,
-    borderRadius: 38,
+    width: 80,
+    height: 80,
+    borderRadius: radii.full,
     backgroundColor: colors.primaryLight,
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 18,
-    borderWidth: 1,
+    borderWidth: 2,
     borderColor: colors.primaryMuted,
+    justifyContent: "center",
+    alignItems: "center",
+    marginBottom: spacing.md,
   },
   logoInner: {
-    width: 58,
-    height: 58,
-    borderRadius: 29,
+    width: 60,
+    height: 60,
+    borderRadius: radii.full,
     backgroundColor: colors.primary,
-    alignItems: "center",
     justifyContent: "center",
-    ...shadows.base,
+    alignItems: "center",
   },
   brandTitle: {
-    fontSize: 28,
-    fontWeight: typography.weights.extrabold,
+    ...textStyles.display,
     color: colors.text,
-    letterSpacing: -0.6,
     marginBottom: 4,
   },
   brandSubtitle: {
-    fontSize: 13,
-    fontWeight: typography.weights.semibold,
-    color: colors.primary,
-    textAlign: "center",
-    marginBottom: 8,
-  },
-  brandTagline: {
-    fontSize: 12,
+    ...textStyles.title,
     color: colors.textSecondary,
     textAlign: "center",
-    lineHeight: 18,
-    marginBottom: 22,
-    paddingHorizontal: 8,
+    marginBottom: spacing.xs,
+  },
+  brandTagline: {
+    ...textStyles.body,
+    color: colors.textMuted,
+    textAlign: "center",
+    lineHeight: 20,
+    marginBottom: spacing.lg,
   },
   featuresRow: {
-    width: "100%",
-    gap: 8,
-    marginBottom: 26,
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "center",
+    gap: spacing.xs,
+    marginBottom: spacing.xl,
   },
   featurePill: {
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: colors.surfaceAlt,
-    borderRadius: 8,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
     borderWidth: 1,
     borderColor: colors.border,
+    borderRadius: radii.full,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 6,
   },
   featurePillText: {
-    fontSize: 12,
-    fontWeight: typography.weights.medium,
-    color: colors.text,
+    ...textStyles.caption,
+    fontSize: 11,
+    color: colors.textSecondary,
+    fontWeight: "600",
   },
   actionsContainer: {
     width: "100%",
-    gap: 10,
-    marginBottom: 20,
-  },
-  primaryBtn: {
-    height: 48,
-    backgroundColor: colors.primary,
-    borderRadius: 10,
-    flexDirection: "row",
-    justifyContent: "center",
-    alignItems: "center",
-    ...shadows.sm,
-  },
-  primaryBtnText: {
-    fontSize: 14,
-    fontWeight: typography.weights.bold,
-    color: "#FFFFFF",
-  },
-  secondaryBtn: {
-    height: 46,
-    backgroundColor: colors.surfaceAlt,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: colors.border,
-    flexDirection: "row",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  secondaryBtnText: {
-    fontSize: 13,
-    fontWeight: typography.weights.semibold,
-    color: colors.text,
-  },
-  btnPressed: {
-    backgroundColor: colors.primaryDark,
-  },
-  btnPressedSecondary: {
-    backgroundColor: colors.border,
+    marginBottom: spacing.lg,
   },
   footerText: {
-    fontSize: 11,
+    ...textStyles.caption,
     color: colors.textMuted,
     textAlign: "center",
   },

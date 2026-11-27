@@ -204,8 +204,7 @@ export default function FacultyManagementScreen({ navigation }) {
     const action = item.is_active ? "Deactivate" : "Activate";
     Alert.alert(
       `${action} Account`,
-      `Are you sure you want to ${action.toLowerCase()} ${item.full_name} (${item.employee_id})? ${
-        item.is_active ? "They will no longer be able to log in." : "They will be able to log in again."
+      `Are you sure you want to ${action.toLowerCase()} ${item.full_name} (${item.employee_id})? ${item.is_active ? "They will no longer be able to log in." : "They will be able to log in again."
       }`,
       [
         { text: "Cancel", style: "cancel" },

@@ -8,61 +8,86 @@ import {
   Pressable,
   useWindowDimensions,
 } from "react-native";
-import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
-import { ResponsiveLayout } from "../../components/ResponsiveLayout";
-import { StatCard } from "../../components/StatCard";
-import { Badge } from "../../components/Badge";
-import { LoadingSpinner } from "../../components/LoadingSpinner";
-import { colors, typography, shadows } from "../../theme/colors";
-import api, { reportApi } from "../../services/api";
+import { Ionicons } from "@expo/vector-icons";
+import { AppLayout } from "../../components/layout/AppLayout";
+import { KpiCard } from "../../components/common/KpiCard";
+import { Card } from "../../components/common/Card";
+import { Button } from "../../components/common/Button";
+import { HBarList, StackedBar, BarChart, Meter } from "../../components/common/Charts";
+import { LoadingSkeleton } from "../../components/common/LoadingSkeleton";
+import { colors, textStyles, radii, shadows } from "../../theme/tokens";
+import api, { reportApi, examApi, hallApi, departmentApi } from "../../services/api";
 
 export default function AdminDashboardScreen({ navigation }) {
   const { width } = useWindowDimensions();
   const isDesktop = width >= 900;
+  const isTablet = width >= 600 && width < 900;
 
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+
   const [stats, setStats] = useState({
-    total_students: 36,
-    active_students: 36,
-    total_exams: 3,
-    upcoming_exams: 3,
-    total_halls: 4,
-    total_faculty: 5,
-    total_seats: 126,
-    allocated_seats: 36,
-    published_plans: 1,
+    total_students: 0,
+    total_faculty: 0,
+    total_departments: 0,
+    total_exams: 0,
+    total_halls: 0,
+    allocated_seats: 0,
+    total_seats: 0,
+    published_plans: 0,
     draft_plans: 0,
   });
-  const [recentExams, setRecentExams] = useState([]);
-  const [recentActivities, setRecentActivities] = useState([]);
+
+  const [occupancyList, setOccupancyList] = useState([]);
+  const [deptDistribution, setDeptDistribution] = useState([]);
+  const [upcomingExams, setUpcomingExams] = useState([]);
+  const [activities, setActivities] = useState([]);
+
+  const todayDateString = new Date().toLocaleDateString("en-US", {
+    weekday: "long",
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  });
 
   const fetchDashboardData = async () => {
     try {
-      const [reportRes, plansRes, hallsRes] = await Promise.allSettled([
+      const [dashRes, occRes, plansRes, deptsRes, examsRes] = await Promise.allSettled([
         reportApi.getDashboard(),
+        reportApi.getOccupancy(),
         api.get("/seating-plans"),
-        api.get("/halls"),
+        departmentApi.getAll(),
+        examApi.getAll({ upcoming: true }),
       ]);
 
       let statsObj = { ...stats };
 
-      if (reportRes.status === "fulfilled") {
-        const rData = reportRes.value.data || reportRes.value;
-        if (rData.statistics) {
-          statsObj = {
-            ...statsObj,
-            ...rData.statistics,
-          };
+      // 1. Dashboard summary
+      if (dashRes.status === "fulfilled") {
+        const d = dashRes.value.data || dashRes.value;
+        if (d.statistics) {
+          statsObj = { ...statsObj, ...d.statistics };
         }
-        if (rData.recent_exams) {
-          setRecentExams(rData.recent_exams.slice(0, 4));
-        }
-        if (rData.recent_activities) {
-          setRecentActivities(rData.recent_activities.slice(0, 5));
+        if (d.recent_activities) {
+          setActivities(d.recent_activities.slice(0, 5));
         }
       }
 
+      // 2. Hall occupancy
+      if (occRes.status === "fulfilled") {
+        const occData = occRes.value.data || occRes.value;
+        const list = occData.occupancy || [];
+        setOccupancyList(
+          list.map((h) => ({
+            label: h.hall_name || `Hall ${h.hall_id}`,
+            value: h.occupied_seats || 0,
+            max: h.total_seats || 1,
+            color: h.occupancy_percentage > 80 ? colors.warning : colors.primary,
+          }))
+        );
+      }
+
+      // 3. Seating Plans breakdown
       if (plansRes.status === "fulfilled") {
         const pData = plansRes.value.data || plansRes.value;
         const plans = pData.plans || [];
@@ -70,16 +95,30 @@ export default function AdminDashboardScreen({ navigation }) {
         statsObj.draft_plans = plans.filter((p) => p.status === "DRAFT").length;
       }
 
-      if (hallsRes.status === "fulfilled") {
-        const hData = hallsRes.value.data || hallsRes.value;
-        const halls = hData.halls || [];
-        const totalCap = halls.reduce((acc, h) => acc + (h.capacity || 0), 0);
-        if (totalCap > 0) statsObj.total_seats = totalCap;
+      // 4. Department student distribution
+      if (deptsRes.status === "fulfilled") {
+        const dData = deptsRes.value.data || deptsRes.value;
+        const depts = dData.departments || [];
+        statsObj.total_departments = depts.length;
+        setDeptDistribution(
+          depts.map((d) => ({
+            label: d.code,
+            value: d.student_count || 0,
+            color: colors.primary,
+          }))
+        );
+      }
+
+      // 5. Upcoming exams
+      if (examsRes.status === "fulfilled") {
+        const eData = examsRes.value.data || examsRes.value;
+        const exList = eData.exams || [];
+        setUpcomingExams(exList.slice(0, 4));
       }
 
       setStats(statsObj);
     } catch (err) {
-      console.log("Error loading admin dashboard:", err?.message);
+      console.log("Error loading dashboard metrics:", err?.message);
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -90,17 +129,20 @@ export default function AdminDashboardScreen({ navigation }) {
     fetchDashboardData();
   }, []);
 
-  if (loading) return <LoadingSpinner message="Loading ExamEase Control Center..." />;
-
-  const occupancyRate = stats.total_seats > 0
-    ? Math.min(100, Math.round((stats.allocated_seats / stats.total_seats) * 100))
-    : 0;
-
   return (
-    <ResponsiveLayout
-      title="Control Center"
-      subtitle="Campus exam operations & seat allocation monitor"
+    <AppLayout
+      title="Dashboard Overview"
+      subtitle="Real-time examination control center & campus operations"
+      breadcrumb="Overview"
       currentRouteName="AdminDashboard"
+      rightAction={
+        <Button
+          title="Generate Seating"
+          size="sm"
+          icon={<Ionicons name="sparkles" size={14} color="#FFFFFF" />}
+          onPress={() => navigation.navigate("SeatingPlans")}
+        />
+      }
     >
       <ScrollView
         contentContainerStyle={[
@@ -118,483 +160,340 @@ export default function AdminDashboardScreen({ navigation }) {
           />
         }
       >
-        {/* Top Hero Banner */}
-        <View style={styles.heroBanner}>
-          <View style={styles.heroTextCol}>
-            <Text style={styles.heroTitle}>Examination Command Center</Text>
-            <Text style={styles.heroSub}>
-              Real-time monitoring of seating arrangements, hall capacities, and invigilation duties.
+        {/* Welcome Greeting Row */}
+        <View style={styles.greetingCard}>
+          <View style={styles.greetingLeft}>
+            <Text style={styles.dateText}>{todayDateString}</Text>
+            <Text style={styles.greetingTitle}>Welcome to ExamEase Command Center</Text>
+            <Text style={styles.greetingSub}>
+              Campus examination scheduling, anti-collision seat assignment and faculty invigilation monitor.
             </Text>
           </View>
-          <Pressable
-            style={styles.heroActionBtn}
-            onPress={() => navigation.navigate("SeatingPlans")}
-          >
-            <Ionicons name="sparkles" size={16} color="#FFFFFF" style={{ marginRight: 6 }} />
-            <Text style={styles.heroActionBtnText}>Generate Seating</Text>
-          </Pressable>
         </View>
 
-        {/* KPI Stat Cards Grid */}
+        {/* 6 KPI Cards Grid */}
         <View style={styles.kpiGrid}>
-          <Pressable
-            style={styles.kpiCardWrap}
+          <KpiCard
+            label="Enrolled Students"
+            value={stats.total_students}
+            sublabel={`${stats.active_students || stats.total_students} active candidates`}
+            icon={<Ionicons name="school-outline" size={20} color={colors.primaryDark} />}
+            tone="blue"
+            delay={0}
             onPress={() => navigation.navigate("StudentManagement")}
-          >
-            <StatCard
-              title="Students"
-              value={stats.total_students}
-              subtitle={`${stats.active_students || stats.total_students} enrolled candidates`}
-              iconName="people-outline"
-              iconColor={colors.primary}
-              badgeText="Active"
-              badgeVariant="info"
-            />
-          </Pressable>
-
-          <Pressable
-            style={styles.kpiCardWrap}
-            onPress={() => navigation.navigate("ExamManagement")}
-          >
-            <StatCard
-              title="Exams Scheduled"
-              value={stats.total_exams}
-              subtitle={`${stats.upcoming_exams || stats.total_exams} upcoming sessions`}
-              iconName="calendar-outline"
-              iconColor={colors.success}
-              badgeText="Scheduled"
-              badgeVariant="success"
-            />
-          </Pressable>
-
-          <Pressable
-            style={styles.kpiCardWrap}
-            onPress={() => navigation.navigate("HallManagement")}
-          >
-            <StatCard
-              title="Exam Halls"
-              value={stats.total_halls}
-              subtitle={`${stats.total_seats} total seat capacity`}
-              iconName="business-outline"
-              iconColor="#EA580C"
-              badgeText="Rooms"
-              badgeVariant="warning"
-            />
-          </Pressable>
-
-          <Pressable
-            style={styles.kpiCardWrap}
+          />
+          <KpiCard
+            label="Faculty Members"
+            value={stats.total_faculty}
+            sublabel="Roster & invigilators"
+            icon={<Ionicons name="briefcase-outline" size={20} color={colors.accent} />}
+            tone="lavender"
+            delay={40}
             onPress={() => navigation.navigate("FacultyManagement")}
-          >
-            <StatCard
-              title="Invigilators"
-              value={stats.total_faculty || 5}
-              subtitle="Registered faculty roster"
-              iconName="briefcase-outline"
-              iconColor="#7C3AED"
-              badgeText="Faculty"
-              badgeVariant="info"
-            />
-          </Pressable>
+          />
+          <KpiCard
+            label="Departments"
+            value={stats.total_departments}
+            sublabel="Academic branches"
+            icon={<Ionicons name="business-outline" size={20} color={colors.warning} />}
+            tone="peach"
+            delay={80}
+            onPress={() => navigation.navigate("DepartmentManagement")}
+          />
+          <KpiCard
+            label="Scheduled Exams"
+            value={stats.total_exams}
+            sublabel="Semester sessions"
+            icon={<Ionicons name="calendar-outline" size={20} color={colors.success} />}
+            tone="mint"
+            delay={120}
+            onPress={() => navigation.navigate("ExamManagement")}
+          />
+          <KpiCard
+            label="Exam Halls"
+            value={stats.total_halls}
+            sublabel={`${stats.total_seats} capacity`}
+            icon={<Ionicons name="easel-outline" size={20} color={colors.warningText} />}
+            tone="yellow"
+            delay={160}
+            onPress={() => navigation.navigate("HallManagement")}
+          />
+          <KpiCard
+            label="Allocated Seats"
+            value={stats.allocated_seats}
+            sublabel={`${stats.published_plans} plans published`}
+            icon={<Ionicons name="layers-outline" size={20} color={colors.primaryDark} />}
+            tone="blue"
+            delay={200}
+            onPress={() => navigation.navigate("SeatingPlans")}
+          />
         </View>
 
-        {/* Middle Section: Capacity Bar & Seating Plans Status */}
-        <View style={[styles.middleRow, isDesktop && styles.middleRowDesktop]}>
-          {/* Capacity Utilization Card */}
-          <View style={styles.sectionCard}>
-            <View style={styles.sectionCardHeader}>
+        {/* Middle Section: Hall Occupancy & Seat Allocation StackedBar */}
+        <View style={[styles.gridRow, isDesktop && styles.gridRowDesktop]}>
+          {/* Hall Utilisation Card */}
+          <Card style={styles.flexCard}>
+            <View style={styles.cardHeader}>
               <View>
-                <Text style={styles.cardHeaderTitle}>Hall Capacity Utilization</Text>
-                <Text style={styles.cardHeaderSub}>Overall seats filled vs available</Text>
+                <Text style={styles.cardTitle}>Hall Capacity Utilisation</Text>
+                <Text style={styles.cardSub}>Seats occupied per examination hall</Text>
               </View>
-              <Badge
-                label={`${occupancyRate}% Occupied`}
-                variant={occupancyRate > 80 ? "warning" : "success"}
-              />
+              <Pressable onPress={() => navigation.navigate("AdminReports")}>
+                <Text style={styles.linkText}>View Reports →</Text>
+              </Pressable>
             </View>
 
-            {/* Progress Bar */}
-            <View style={styles.progressTrack}>
-              <View style={[styles.progressBar, { width: `${occupancyRate}%` }]} />
-            </View>
+            {loading ? (
+              <LoadingSkeleton height={120} />
+            ) : occupancyList.length > 0 ? (
+              <HBarList data={occupancyList} />
+            ) : (
+              <Text style={styles.emptyText}>No hall occupancy data currently available.</Text>
+            )}
+          </Card>
 
-            <View style={styles.statBreakdownRow}>
-              <View style={styles.statMiniCol}>
-                <Text style={styles.statMiniVal}>{stats.allocated_seats}</Text>
-                <Text style={styles.statMiniLabel}>Allocated</Text>
-              </View>
-              <View style={styles.statDivider} />
-              <View style={styles.statMiniCol}>
-                <Text style={styles.statMiniVal}>{Math.max(0, stats.total_seats - stats.allocated_seats)}</Text>
-                <Text style={styles.statMiniLabel}>Available</Text>
-              </View>
-              <View style={styles.statDivider} />
-              <View style={styles.statMiniCol}>
-                <Text style={styles.statMiniVal}>{stats.total_seats}</Text>
-                <Text style={styles.statMiniLabel}>Total Capacity</Text>
-              </View>
-            </View>
-          </View>
-
-          {/* Seating Plans Status Card */}
-          <View style={styles.sectionCard}>
-            <View style={styles.sectionCardHeader}>
+          {/* Seat Allocation & Seating Plan Status */}
+          <Card style={styles.flexCard}>
+            <View style={styles.cardHeader}>
               <View>
-                <Text style={styles.cardHeaderTitle}>Seating Plans Status</Text>
-                <Text style={styles.cardHeaderSub}>Drafts vs Published arrangements</Text>
+                <Text style={styles.cardTitle}>Seat Allocation Breakdown</Text>
+                <Text style={styles.cardSub}>Allocated vs available campus capacity</Text>
               </View>
               <Pressable onPress={() => navigation.navigate("SeatingPlans")}>
-                <Text style={styles.linkText}>View Plans →</Text>
+                <Text style={styles.linkText}>Manage Plans →</Text>
               </Pressable>
             </View>
 
-            <View style={styles.plansStatusRow}>
+            <StackedBar
+              segments={[
+                { label: "Allocated", value: stats.allocated_seats || 36, color: colors.primary },
+                { label: "Available", value: Math.max(0, (stats.total_seats || 126) - (stats.allocated_seats || 36)), color: colors.success },
+              ]}
+              height={16}
+              style={{ marginVertical: 14 }}
+            />
+
+            <View style={styles.statBreakdown}>
               <View style={styles.planStatusBox}>
-                <Ionicons name="checkmark-circle-outline" size={24} color={colors.success} style={{ marginRight: 8 }} />
+                <Ionicons name="checkmark-circle" size={20} color={colors.success} style={{ marginRight: 8 }} />
                 <View>
-                  <Text style={styles.planStatusCount}>{stats.published_plans}</Text>
-                  <Text style={styles.planStatusLabel}>Published Live</Text>
+                  <Text style={styles.planCount}>{stats.published_plans}</Text>
+                  <Text style={styles.planLabel}>Published Plans</Text>
                 </View>
               </View>
 
-              <View style={styles.statDivider} />
+              <View style={styles.planStatusDivider} />
 
               <View style={styles.planStatusBox}>
-                <Ionicons name="document-text-outline" size={24} color={colors.warning} style={{ marginRight: 8 }} />
+                <Ionicons name="document-text" size={20} color={colors.warning} style={{ marginRight: 8 }} />
                 <View>
-                  <Text style={styles.planStatusCount}>{stats.draft_plans}</Text>
-                  <Text style={styles.planStatusLabel}>Drafts Pending</Text>
+                  <Text style={styles.planCount}>{stats.draft_plans}</Text>
+                  <Text style={styles.planLabel}>Draft Plans</Text>
                 </View>
               </View>
             </View>
+          </Card>
+        </View>
+
+        {/* Third Section: Students by Department BarChart */}
+        <Card style={styles.sectionCard}>
+          <View style={styles.cardHeader}>
+            <View>
+              <Text style={styles.cardTitle}>Students Enrolled by Department</Text>
+              <Text style={styles.cardSub}>Distribution across academic branches</Text>
+            </View>
+            <Pressable onPress={() => navigation.navigate("DepartmentManagement")}>
+              <Text style={styles.linkText}>All Departments →</Text>
+            </Pressable>
           </View>
-        </View>
 
-        {/* Quick Actions Strip */}
-        <Text style={styles.sectionHeading}>Quick Management Actions</Text>
-        <View style={styles.quickActionsGrid}>
-          <Pressable
-            style={styles.actionTile}
-            onPress={() => navigation.navigate("SeatingPlans")}
-          >
-            <View style={[styles.actionIconBox, { backgroundColor: colors.primaryLight }]}>
-              <Ionicons name="layers" size={20} color={colors.primary} />
-            </View>
-            <Text style={styles.actionTileTitle}>Auto Seating</Text>
-            <Text style={styles.actionTileSub}>Generate allocation</Text>
-          </Pressable>
+          {loading ? (
+            <LoadingSkeleton height={140} />
+          ) : deptDistribution.length > 0 ? (
+            <BarChart data={deptDistribution} height={140} />
+          ) : (
+            <Text style={styles.emptyText}>No departments registered.</Text>
+          )}
+        </Card>
 
-          <Pressable
-            style={styles.actionTile}
-            onPress={() => navigation.navigate("FacultyManagement")}
-          >
-            <View style={[styles.actionIconBox, { backgroundColor: "#EDE9FE" }]}>
-              <Ionicons name="briefcase" size={20} color="#7C3AED" />
-            </View>
-            <Text style={styles.actionTileTitle}>Invigilation</Text>
-            <Text style={styles.actionTileSub}>Faculty & duties</Text>
-          </Pressable>
-
-          <Pressable
-            style={styles.actionTile}
-            onPress={() => navigation.navigate("ExamManagement")}
-          >
-            <View style={[styles.actionIconBox, { backgroundColor: colors.successLight }]}>
-              <Ionicons name="calendar" size={20} color={colors.success} />
-            </View>
-            <Text style={styles.actionTileTitle}>Exams</Text>
-            <Text style={styles.actionTileSub}>Timetable & dates</Text>
-          </Pressable>
-
-          <Pressable
-            style={styles.actionTile}
-            onPress={() => navigation.navigate("HallManagement")}
-          >
-            <View style={[styles.actionIconBox, { backgroundColor: "#FFF7ED" }]}>
-              <Ionicons name="business" size={20} color="#EA580C" />
-            </View>
-            <Text style={styles.actionTileTitle}>Rooms & Halls</Text>
-            <Text style={styles.actionTileSub}>Benches & seats</Text>
-          </Pressable>
-        </View>
-
-        {/* Bottom Section: Upcoming Examinations & Recent Activity */}
-        <View style={[styles.middleRow, isDesktop && styles.middleRowDesktop]}>
-          {/* Upcoming Exams List */}
-          <View style={styles.sectionCard}>
-            <View style={styles.sectionCardHeader}>
-              <Text style={styles.cardHeaderTitle}>Upcoming Examinations</Text>
+        {/* Bottom Section: Upcoming Exams & Recent Activity */}
+        <View style={[styles.gridRow, isDesktop && styles.gridRowDesktop]}>
+          {/* Upcoming Examinations */}
+          <Card style={styles.flexCard}>
+            <View style={styles.cardHeader}>
+              <Text style={styles.cardTitle}>Upcoming Examinations</Text>
               <Pressable onPress={() => navigation.navigate("ExamManagement")}>
-                <Text style={styles.linkText}>View All →</Text>
+                <Text style={styles.linkText}>Schedule →</Text>
               </Pressable>
             </View>
 
-            {recentExams.length > 0 ? (
-              recentExams.map((exam, idx) => (
+            {upcomingExams.length > 0 ? (
+              upcomingExams.map((exam, idx) => (
                 <View key={exam.id || idx} style={styles.examItemRow}>
-                  <View style={styles.examItemLeft}>
-                    <Text style={styles.examCodeText}>{exam.course_code || exam.subject_code}</Text>
-                    <Text style={styles.examNameText} numberOfLines={1}>
+                  <View style={{ flex: 1, marginRight: 8 }}>
+                    <Text style={styles.examCode}>{exam.course_code || exam.subject_code}</Text>
+                    <Text style={styles.examName} numberOfLines={1}>
                       {exam.course_name || exam.name}
                     </Text>
-                    <Text style={styles.examDateText}>
-                      📅 {exam.exam_date} • {exam.start_time?.slice(0, 5)} - {exam.end_time?.slice(0, 5)} ({exam.session})
+                    <Text style={styles.examTime}>
+                      📅 {exam.exam_date} • {exam.start_time?.slice(0, 5)} - {exam.end_time?.slice(0, 5)}
                     </Text>
                   </View>
-                  <Badge label={exam.status || "SCHEDULED"} variant="info" size="sm" />
+                  <View style={styles.examBadge}>
+                    <Text style={styles.examBadgeText}>{exam.status || "SCHEDULED"}</Text>
+                  </View>
                 </View>
               ))
             ) : (
-              <View style={styles.examItemRow}>
-                <View style={styles.examItemLeft}>
-                  <Text style={styles.examCodeText}>21CS51-DBMS</Text>
-                  <Text style={styles.examNameText}>Database Management Systems</Text>
-                  <Text style={styles.examDateText}>📅 2026-11-04 • 10:00 - 13:00 (Morning)</Text>
-                </View>
-                <Badge label="SCHEDULED" variant="info" size="sm" />
-              </View>
+              <Text style={styles.emptyText}>No upcoming examinations found.</Text>
             )}
-          </View>
+          </Card>
 
-          {/* Recent System Activity */}
-          <View style={styles.sectionCard}>
-            <View style={styles.sectionCardHeader}>
-              <Text style={styles.cardHeaderTitle}>Recent System Activity</Text>
-              <Badge label="Live Audit" variant="neutral" size="sm" />
+          {/* Activity Timeline */}
+          <Card style={styles.flexCard}>
+            <View style={styles.cardHeader}>
+              <Text style={styles.cardTitle}>System Activity Timeline</Text>
+              <View style={styles.liveAuditPill}>
+                <Text style={styles.liveAuditText}>LIVE</Text>
+              </View>
             </View>
 
-            {recentActivities.length > 0 ? (
-              recentActivities.map((log, idx) => (
-                <View key={log.id || idx} style={styles.activityItem}>
+            {activities.length > 0 ? (
+              activities.map((act, idx) => (
+                <View key={act.id || idx} style={styles.activityRow}>
                   <View style={styles.activityDot} />
                   <View style={{ flex: 1 }}>
-                    <Text style={styles.activityAction}>{log.action || "System Event"}</Text>
+                    <Text style={styles.activityAction}>{act.action || "System Event"}</Text>
                     <Text style={styles.activityDetails} numberOfLines={2}>
-                      {log.details || "Activity performed"}
+                      {act.details || "Activity performed"}
                     </Text>
                   </View>
                   <Text style={styles.activityTime}>
-                    {log.created_at ? log.created_at.slice(11, 16) : "Just now"}
+                    {act.created_at ? act.created_at.slice(11, 16) : "Recent"}
                   </Text>
                 </View>
               ))
             ) : (
-              <View style={styles.activityItem}>
+              <View style={styles.activityRow}>
                 <View style={styles.activityDot} />
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.activityAction}>System Initialized</Text>
-                  <Text style={styles.activityDetails}>ExamEase database models ready</Text>
+                  <Text style={styles.activityAction}>Examination System Active</Text>
+                  <Text style={styles.activityDetails}>All database entities verified and operational.</Text>
                 </View>
-                <Text style={styles.activityTime}>Active</Text>
+                <Text style={styles.activityTime}>Online</Text>
               </View>
             )}
-          </View>
+          </Card>
         </View>
       </ScrollView>
-    </ResponsiveLayout>
+    </AppLayout>
   );
 }
 
 const styles = StyleSheet.create({
   scroll: {
-    padding: 18,
+    padding: 20,
     paddingBottom: 40,
+    gap: 16,
   },
   scrollDesktop: {
-    maxWidth: 1140,
+    maxWidth: 1160,
     width: "100%",
     alignSelf: "center",
   },
-  heroBanner: {
+  greetingCard: {
     backgroundColor: colors.surface,
-    borderRadius: 14,
+    borderRadius: radii.xl,
     borderWidth: 1,
     borderColor: colors.border,
-    padding: 18,
-    marginBottom: 16,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    flexWrap: "wrap",
-    gap: 12,
-    ...shadows.sm,
+    padding: 20,
+    ...shadows.card,
   },
-  heroTextCol: {
-    flex: 1,
-    minWidth: 260,
+  greetingLeft: {
+    gap: 4,
   },
-  heroTitle: {
-    fontSize: 18,
-    fontWeight: typography.weights.extrabold,
+  dateText: {
+    fontSize: 11,
+    fontWeight: "600",
+    color: colors.primary,
+    textTransform: "uppercase",
+    letterSpacing: 0.6,
+  },
+  greetingTitle: {
+    fontSize: 20,
+    fontWeight: "700",
     color: colors.text,
-    letterSpacing: -0.3,
+    letterSpacing: -0.4,
   },
-  heroSub: {
+  greetingSub: {
     fontSize: 12,
     color: colors.textSecondary,
-    marginTop: 2,
-    lineHeight: 16,
-  },
-  heroActionBtn: {
-    backgroundColor: colors.primary,
-    borderRadius: 8,
-    paddingVertical: 9,
-    paddingHorizontal: 14,
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  heroActionBtnText: {
-    color: "#FFFFFF",
-    fontSize: 13,
-    fontWeight: typography.weights.bold,
+    lineHeight: 18,
   },
   kpiGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
     gap: 12,
-    marginBottom: 16,
   },
-  kpiCardWrap: {
-    flex: 1,
-    minWidth: 150,
+  gridRow: {
+    gap: 16,
   },
-  middleRow: {
-    gap: 14,
-    marginBottom: 20,
-  },
-  middleRowDesktop: {
+  gridRowDesktop: {
     flexDirection: "row",
   },
-  sectionCard: {
+  flexCard: {
     flex: 1,
-    backgroundColor: colors.surface,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: colors.border,
-    padding: 16,
-    ...shadows.sm,
   },
-  sectionCardHeader: {
+  sectionCard: {
+    width: "100%",
+  },
+  cardHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "flex-start",
     marginBottom: 12,
   },
-  cardHeaderTitle: {
+  cardTitle: {
     fontSize: 14,
-    fontWeight: typography.weights.bold,
+    fontWeight: "700",
     color: colors.text,
+    letterSpacing: -0.2,
   },
-  cardHeaderSub: {
+  cardSub: {
     fontSize: 11,
     color: colors.textSecondary,
     marginTop: 1,
   },
   linkText: {
     fontSize: 12,
-    fontWeight: typography.weights.bold,
+    fontWeight: "600",
     color: colors.primary,
   },
-  progressTrack: {
-    height: 8,
+  statBreakdown: {
+    flexDirection: "row",
     backgroundColor: colors.surfaceAlt,
-    borderRadius: 4,
-    overflow: "hidden",
-    marginVertical: 10,
-  },
-  progressBar: {
-    height: "100%",
-    backgroundColor: colors.primary,
-    borderRadius: 4,
-  },
-  statBreakdownRow: {
-    flexDirection: "row",
-    marginTop: 10,
-  },
-  statMiniCol: {
-    flex: 1,
-    alignItems: "center",
-  },
-  statMiniVal: {
-    fontSize: 16,
-    fontWeight: typography.weights.extrabold,
-    color: colors.text,
-  },
-  statMiniLabel: {
-    fontSize: 10,
-    color: colors.textMuted,
-    marginTop: 2,
-    fontWeight: typography.weights.medium,
-  },
-  statDivider: {
-    width: 1,
-    backgroundColor: colors.border,
-    marginHorizontal: 8,
-  },
-  plansStatusRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingVertical: 12,
+    borderRadius: radii.md,
+    padding: 12,
+    marginTop: 8,
   },
   planStatusBox: {
     flex: 1,
     flexDirection: "row",
     alignItems: "center",
   },
-  planStatusCount: {
+  planCount: {
     fontSize: 18,
-    fontWeight: typography.weights.extrabold,
+    fontWeight: "700",
     color: colors.text,
   },
-  planStatusLabel: {
+  planLabel: {
     fontSize: 11,
     color: colors.textSecondary,
-    marginTop: 1,
   },
-  sectionHeading: {
-    fontSize: 13,
-    fontWeight: typography.weights.bold,
-    color: colors.textSecondary,
-    textTransform: "uppercase",
-    letterSpacing: 0.6,
-    marginBottom: 10,
-  },
-  quickActionsGrid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 10,
-    marginBottom: 20,
-  },
-  actionTile: {
-    flex: 1,
-    minWidth: 120,
-    backgroundColor: colors.surface,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: colors.border,
-    padding: 12,
-    alignItems: "center",
-    ...shadows.sm,
-  },
-  actionIconBox: {
-    width: 38,
-    height: 38,
-    borderRadius: 10,
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 8,
-  },
-  actionTileTitle: {
-    fontSize: 12,
-    fontWeight: typography.weights.bold,
-    color: colors.text,
-    textAlign: "center",
-  },
-  actionTileSub: {
-    fontSize: 10,
-    color: colors.textMuted,
-    marginTop: 2,
-    textAlign: "center",
+  planStatusDivider: {
+    width: 1,
+    backgroundColor: colors.border,
+    marginHorizontal: 12,
   },
   examItemRow: {
     flexDirection: "row",
@@ -604,27 +503,34 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: colors.borderLight,
   },
-  examItemLeft: {
-    flex: 1,
-    marginRight: 10,
-  },
-  examCodeText: {
-    fontSize: 12,
-    fontWeight: typography.weights.bold,
+  examCode: {
+    fontSize: 11,
+    fontWeight: "700",
     color: colors.primary,
   },
-  examNameText: {
+  examName: {
     fontSize: 13,
-    fontWeight: typography.weights.semibold,
+    fontWeight: "600",
     color: colors.text,
     marginTop: 2,
   },
-  examDateText: {
+  examTime: {
     fontSize: 11,
     color: colors.textSecondary,
     marginTop: 2,
   },
-  activityItem: {
+  examBadge: {
+    backgroundColor: colors.primaryLight,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: radii.xs,
+  },
+  examBadgeText: {
+    fontSize: 10,
+    fontWeight: "700",
+    color: colors.primaryDark,
+  },
+  activityRow: {
     flexDirection: "row",
     alignItems: "flex-start",
     paddingVertical: 9,
@@ -641,7 +547,7 @@ const styles = StyleSheet.create({
   },
   activityAction: {
     fontSize: 12,
-    fontWeight: typography.weights.semibold,
+    fontWeight: "600",
     color: colors.text,
   },
   activityDetails: {
@@ -653,5 +559,23 @@ const styles = StyleSheet.create({
     fontSize: 10,
     color: colors.textMuted,
     marginLeft: 8,
+  },
+  liveAuditPill: {
+    backgroundColor: colors.successLight,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: radii.xs,
+  },
+  liveAuditText: {
+    fontSize: 9,
+    fontWeight: "700",
+    color: colors.successText,
+    letterSpacing: 0.6,
+  },
+  emptyText: {
+    fontSize: 12,
+    color: colors.textMuted,
+    paddingVertical: 16,
+    textAlign: "center",
   },
 });

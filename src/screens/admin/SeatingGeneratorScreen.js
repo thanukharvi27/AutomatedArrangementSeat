@@ -4,35 +4,39 @@ import {
   Text,
   StyleSheet,
   ScrollView,
-  Pressable,
-  ActivityIndicator,
   RefreshControl,
+  Pressable,
   useWindowDimensions,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { ResponsiveLayout } from "../../components/ResponsiveLayout";
-import { Badge } from "../../components/Badge";
-import { LoadingSpinner } from "../../components/LoadingSpinner";
-import { colors, typography, shadows } from "../../theme/colors";
+import { AppLayout } from "../../components/layout/AppLayout";
+import { Card } from "../../components/common/Card";
+import { Button } from "../../components/common/Button";
+import { Meter } from "../../components/common/Charts";
+import { LoadingSkeleton } from "../../components/common/LoadingSkeleton";
+import { colors, radii, textStyles, shadows } from "../../theme/tokens";
 import { showAlert } from "../../utils/alerts";
 import api, { examApi, hallApi, seatingApi } from "../../services/api";
 
 export default function SeatingGeneratorScreen({ navigation }) {
   const { width } = useWindowDimensions();
-  const isDesktop = width >= 900;
+  const isDesktop = width >= 768;
+
+  // Wizard state: 1 (Exam) -> 2 (Strategy) -> 3 (Halls) -> 4 (Review) -> 5 (Generate)
+  const [currentStep, setCurrentStep] = useState(1);
 
   const [exams, setExams] = useState([]);
   const [halls, setHalls] = useState([]);
   const [plans, setPlans] = useState([]);
 
   const [selectedExamId, setSelectedExamId] = useState(null);
+  const [selectedStrategy, setSelectedStrategy] = useState("INTERLEAVE"); // INTERLEAVE | CONSECUTIVE
   const [selectedHallIds, setSelectedHallIds] = useState([]);
   const [selectedExamRegCount, setSelectedExamRegCount] = useState(0);
 
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
-  const [registering, setRegistering] = useState(false);
 
   const loadData = async () => {
     try {
@@ -92,7 +96,7 @@ export default function SeatingGeneratorScreen({ navigation }) {
   const handleToggleHall = (hallId) => {
     if (selectedHallIds.includes(hallId)) {
       if (selectedHallIds.length === 1) {
-        showAlert("Notice", "At least one examination hall must be selected.");
+        showAlert("Validation", "At least one examination hall must remain selected.");
         return;
       }
       setSelectedHallIds(selectedHallIds.filter((id) => id !== hallId));
@@ -101,42 +105,19 @@ export default function SeatingGeneratorScreen({ navigation }) {
     }
   };
 
-  const handleSelectAllHalls = () => {
-    setSelectedHallIds(halls.map((h) => h.id));
-  };
-
-  const handleRegisterEligible = async () => {
-    if (!selectedExamId) return;
-    setRegistering(true);
-    try {
-      const res = await examApi.registerStudents(selectedExamId);
-      const data = res.data || res;
-      if (data.success) {
-        showAlert("Students Registered", data.message || "Eligible department students registered successfully!");
-        const currentExam = exams.find((e) => e.id === selectedExamId);
-        if (currentExam) handleSelectExam(currentExam);
-      } else {
-        showAlert("Registration Note", data.error || "Could not register students.");
-      }
-    } catch (err) {
-      showAlert("Error", err.response?.data?.error || err.message || "Registration failed.");
-    } finally {
-      setRegistering(false);
-    }
-  };
-
   const selectedExam = exams.find((e) => e.id === selectedExamId);
-  const selectedHallsList = halls.filter((h) => selectedHallIds.includes(h.id));
-  const totalSelectedCapacity = selectedHallsList.reduce((acc, h) => acc + (h.capacity || 0), 0);
-  const hasSufficientCapacity = totalSelectedCapacity >= selectedExamRegCount;
+  const selectedHalls = halls.filter((h) => selectedHallIds.includes(h.id));
+  const totalCapacity = selectedHalls.reduce((sum, h) => sum + (h.capacity || 0), 0);
+  const hasEnoughSeats = totalCapacity >= selectedExamRegCount;
+  const occupancyPct = totalCapacity > 0 ? Math.min(100, Math.round((selectedExamRegCount / totalCapacity) * 100)) : 0;
 
   const handleGenerate = async () => {
     if (!selectedExamId) {
-      showAlert("Missing Selection", "Please select an examination to generate seating for.");
+      showAlert("Missing Selection", "Please select an examination in Step 1.");
       return;
     }
     if (selectedHallIds.length === 0) {
-      showAlert("Missing Selection", "Please select at least one examination hall.");
+      showAlert("Missing Selection", "Please select at least one examination hall in Step 3.");
       return;
     }
 
@@ -145,41 +126,45 @@ export default function SeatingGeneratorScreen({ navigation }) {
       const payload = {
         exam_id: selectedExamId,
         hall_ids: selectedHallIds,
-        policy: "INTERLEAVE",
+        policy: selectedStrategy, // INTERLEAVE or CONSECUTIVE
         force: true,
       };
 
       const res = await seatingApi.generate(payload);
       const data = res.data || res;
-
       if (data.success) {
         showAlert(
           "Seating Generated!",
-          data.message || "Automated seating arrangement generated and saved successfully!"
+          data.message || "Anti-collision seating arrangement generated successfully!"
         );
         loadData();
-
         const planId = data.plan?.id || (data.plans && data.plans[0]?.id);
         if (planId) {
           navigation.navigate("SeatingPlanDetail", { planId });
         }
       } else {
-        showAlert("Allocation Note", data.error || "Could not complete seating allocation.");
+        showAlert("Allocation Note", data.error || "Could not generate seating plan.");
       }
     } catch (err) {
-      const msg = err.response?.data?.error || err.response?.data?.message || err.message || "Could not generate seating.";
-      showAlert("Generation Failed", msg);
+      showAlert("Generation Failed", err.response?.data?.error || err.message || "Allocation failed.");
     } finally {
       setGenerating(false);
     }
   };
 
-  if (loading) return <LoadingSpinner message="Loading seating allocation engine..." />;
+  const STEPS = [
+    { num: 1, title: "Exam" },
+    { num: 2, title: "Strategy" },
+    { num: 3, title: "Halls" },
+    { num: 4, title: "Review" },
+    { num: 5, title: "Generate" },
+  ];
 
   return (
-    <ResponsiveLayout
-      title="Seating Allocation Generator"
-      subtitle="Automated anti-collision exam seat allocation & hall assignment"
+    <AppLayout
+      title="Seating Plan Generator"
+      subtitle="Anti-collision automated seating allocation & hall capacity engine"
+      breadcrumb="Exam Operations / Seating Generator"
       currentRouteName="SeatingPlans"
     >
       <ScrollView
@@ -188,563 +173,670 @@ export default function SeatingGeneratorScreen({ navigation }) {
           isDesktop && styles.scrollDesktop,
         ]}
         showsVerticalScrollIndicator={false}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); loadData(); }} />}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); loadData(); }} />
+        }
       >
-        {/* Step 1: Select Examination */}
-        <View style={styles.stepCard}>
-          <View style={styles.stepHeader}>
-            <View style={styles.stepBadge}>
-              <Text style={styles.stepBadgeText}>1</Text>
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.stepTitle}>Select Examination</Text>
-              <Text style={styles.stepSub}>Choose scheduled exam for seating allocation</Text>
-            </View>
-          </View>
-
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.examPickerScroll}>
-            {exams.map((exam) => {
-              const isSelected = selectedExamId === exam.id;
+        {/* Step Indicator Bar */}
+        <Card style={styles.wizardNavCard}>
+          <View style={styles.wizardStepsRow}>
+            {STEPS.map((s) => {
+              const isActive = currentStep === s.num;
+              const isPast = currentStep > s.num;
               return (
                 <Pressable
-                  key={exam.id}
-                  style={[styles.examChip, isSelected && styles.examChipActive]}
-                  onPress={() => handleSelectExam(exam)}
+                  key={s.num}
+                  accessibilityRole="tab"
+                  accessibilityState={{ selected: isActive }}
+                  onPress={() => setCurrentStep(s.num)}
+                  style={styles.wizardStepBtn}
                 >
-                  <Text style={[styles.examChipCode, isSelected && styles.examChipCodeActive]}>
-                    {exam.course_code || exam.subject_code}
-                  </Text>
-                  <Text style={[styles.examChipName, isSelected && styles.examChipNameActive]} numberOfLines={1}>
-                    {exam.course_name || exam.name}
-                  </Text>
-                  <Text style={[styles.examChipDate, isSelected && styles.examChipDateActive]}>
-                    📅 {exam.exam_date}
+                  <View
+                    style={[
+                      styles.stepCircle,
+                      isActive && styles.stepCircleActive,
+                      isPast && styles.stepCirclePast,
+                    ]}
+                  >
+                    {isPast ? (
+                      <Ionicons name="checkmark" size={13} color="#FFFFFF" />
+                    ) : (
+                      <Text style={[styles.stepNumText, isActive && styles.stepNumTextActive]}>
+                        {s.num}
+                      </Text>
+                    )}
+                  </View>
+                  <Text style={[styles.stepLabel, isActive && styles.stepLabelActive]}>
+                    {s.title}
                   </Text>
                 </Pressable>
               );
             })}
-          </ScrollView>
+          </View>
+        </Card>
 
-          {/* Selected Exam Details Card */}
-          {selectedExam ? (
-            <View style={styles.selectedExamBox}>
-              <View style={styles.selectedExamTop}>
-                <View style={{ flex: 1, marginRight: 10 }}>
-                  <Text style={styles.selectedExamTitle}>
-                    {selectedExam.course_name || selectedExam.name} ({selectedExam.course_code || selectedExam.subject_code})
-                  </Text>
-                  <Text style={styles.selectedExamMeta}>
-                    📅 {selectedExam.exam_date} • {selectedExam.start_time?.slice(0, 5)} - {selectedExam.end_time?.slice(0, 5)} ({selectedExam.session})
-                  </Text>
-                  <Text style={styles.selectedExamDept}>
-                    Department: {selectedExam.department_name || "Engineering"} • Semester {selectedExam.semester}
-                  </Text>
-                </View>
-                <View style={styles.regCountPill}>
-                  <Text style={styles.regCountNum}>{selectedExamRegCount}</Text>
-                  <Text style={styles.regCountLabel}>Students</Text>
-                </View>
-              </View>
+        {/* STEP 1: SELECT EXAM */}
+        {currentStep === 1 && (
+          <Card style={styles.stepCard}>
+            <View style={styles.stepHeader}>
+              <Text style={styles.stepTitle}>Step 1: Choose Examination Session</Text>
+              <Text style={styles.stepSub}>Select the scheduled university exam to seat candidates for</Text>
+            </View>
 
-              {selectedExamRegCount === 0 && (
-                <View style={styles.emptyRegWarning}>
-                  <Ionicons name="alert-circle" size={16} color={colors.warning} style={{ marginRight: 6 }} />
-                  <Text style={styles.emptyRegWarningText}>
-                    No registered students found for this exam yet.
-                  </Text>
+            <View style={styles.examGrid}>
+              {exams.map((ex) => {
+                const isSelected = selectedExamId === ex.id;
+                return (
                   <Pressable
-                    style={styles.autoRegisterBtn}
-                    onPress={handleRegisterEligible}
-                    disabled={registering}
+                    key={ex.id}
+                    onPress={() => handleSelectExam(ex)}
+                    style={[styles.examChoice, isSelected && styles.examChoiceActive]}
                   >
-                    <Text style={styles.autoRegisterBtnText}>
-                      {registering ? "Registering..." : "Auto-Register"}
+                    <View style={styles.examChoiceTop}>
+                      <Text style={[styles.examChoiceCode, isSelected && styles.examChoiceCodeActive]}>
+                        {ex.course_code || ex.subject_code}
+                      </Text>
+                      {isSelected && (
+                        <Ionicons name="checkmark-circle" size={18} color={colors.primary} />
+                      )}
+                    </View>
+                    <Text style={styles.examChoiceName} numberOfLines={2}>
+                      {ex.course_name || ex.name}
+                    </Text>
+                    <Text style={styles.examChoiceDate}>
+                      📅 {ex.exam_date} • {ex.start_time?.slice(0, 5)} - {ex.end_time?.slice(0, 5)}
                     </Text>
                   </Pressable>
-                </View>
-              )}
+                );
+              })}
             </View>
-          ) : (
-            <Text style={styles.noExamText}>No scheduled examinations available.</Text>
-          )}
-        </View>
 
-        {/* Step 2: Select Examination Halls */}
-        <View style={styles.stepCard}>
-          <View style={styles.stepHeader}>
-            <View style={[styles.stepBadge, { backgroundColor: colors.successLight }]}>
-              <Text style={[styles.stepBadgeText, { color: colors.successText }]}>2</Text>
+            <View style={styles.navRow}>
+              <View />
+              <Button
+                title="Next: Choose Strategy →"
+                onPress={() => setCurrentStep(2)}
+              />
             </View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.stepTitle}>Select Examination Halls</Text>
-              <Text style={styles.stepSub}>Pick available rooms to allocate seats into</Text>
-            </View>
-            <Pressable onPress={handleSelectAllHalls} hitSlop={6}>
-              <Text style={styles.selectAllLink}>Select All Halls</Text>
-            </Pressable>
-          </View>
+          </Card>
+        )}
 
-          <View style={styles.hallsGrid}>
-            {halls.map((hall) => {
-              const isSelected = selectedHallIds.includes(hall.id);
-              return (
-                <Pressable
-                  key={hall.id}
-                  style={[styles.hallSelectCard, isSelected && styles.hallSelectCardActive]}
-                  onPress={() => handleToggleHall(hall.id)}
-                >
-                  <View style={styles.hallSelectCardTop}>
-                    <Text style={[styles.hallSelectCode, isSelected && styles.hallSelectCodeActive]}>
-                      {hall.hall_code || hall.name}
-                    </Text>
-                    <Ionicons
-                      name={isSelected ? "checkbox" : "square-outline"}
-                      size={18}
-                      color={isSelected ? colors.primary : colors.textMuted}
-                    />
+        {/* STEP 2: STRATEGY POLICY */}
+        {currentStep === 2 && (
+          <Card style={styles.stepCard}>
+            <View style={styles.stepHeader}>
+              <Text style={styles.stepTitle}>Step 2: Choose Seating Arrangement Strategy</Text>
+              <Text style={styles.stepSub}>Select the anti-collision algorithm policy</Text>
+            </View>
+
+            <View style={styles.strategyRow}>
+              {/* Strategy 1: INTERLEAVE */}
+              <Pressable
+                onPress={() => setSelectedStrategy("INTERLEAVE")}
+                style={[
+                  styles.strategyCard,
+                  selectedStrategy === "INTERLEAVE" && styles.strategyCardActive,
+                ]}
+              >
+                <View style={styles.strategyTop}>
+                  <View style={styles.strategyIconBox}>
+                    <Ionicons name="shuffle-outline" size={22} color={colors.primary} />
                   </View>
-                  <Text style={styles.hallSelectBuilding}>
-                    {hall.building} (Floor {hall.floor})
-                  </Text>
-                  <Text style={[styles.hallSelectCap, isSelected && { color: colors.successText, fontWeight: "700" }]}>
-                    Capacity: {hall.capacity} seats ({hall.num_rows || hall.rows_count} benches)
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </View>
-        </View>
+                  {selectedStrategy === "INTERLEAVE" && (
+                    <Ionicons name="checkmark-circle" size={20} color={colors.primary} />
+                  )}
+                </View>
+                <Text style={styles.strategyTitle}>INTERLEAVE Strategy (Recommended)</Text>
+                <Text style={styles.strategyDesc}>
+                  Seats candidates from different branches and departments alternately on adjacent benches to prevent academic collusion.
+                </Text>
+              </Pressable>
 
-        {/* Step 3: Capacity Verification & Run Engine */}
-        <View style={styles.stepCard}>
-          <View style={styles.stepHeader}>
-            <View style={[styles.stepBadge, { backgroundColor: colors.infoLight }]}>
-              <Text style={[styles.stepBadgeText, { color: colors.infoText }]}>3</Text>
+              {/* Strategy 2: CONSECUTIVE */}
+              <Pressable
+                onPress={() => setSelectedStrategy("CONSECUTIVE")}
+                style={[
+                  styles.strategyCard,
+                  selectedStrategy === "CONSECUTIVE" && styles.strategyCardActive,
+                ]}
+              >
+                <View style={styles.strategyTop}>
+                  <View style={styles.strategyIconBox}>
+                    <Ionicons name="reorder-four-outline" size={22} color={colors.textSecondary} />
+                  </View>
+                  {selectedStrategy === "CONSECUTIVE" && (
+                    <Ionicons name="checkmark-circle" size={20} color={colors.primary} />
+                  )}
+                </View>
+                <Text style={styles.strategyTitle}>CONSECUTIVE Strategy</Text>
+                <Text style={styles.strategyDesc}>
+                  Allocates candidate seats strictly sequentially by registered USN roll order within assigned examination halls.
+                </Text>
+              </Pressable>
             </View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.stepTitle}>Verify Capacity & Generate</Text>
-              <Text style={styles.stepSub}>Confirm room capacity and run automated seating engine</Text>
-            </View>
-          </View>
 
-          {/* Verification Metrics Bar */}
-          <View style={[styles.capacitySummaryBox, hasSufficientCapacity ? styles.capacityOk : styles.capacityWarn]}>
-            <View style={styles.capacityCol}>
-              <Text style={styles.capacityLabel}>Students to Seat</Text>
-              <Text style={styles.capacityVal}>{selectedExamRegCount}</Text>
+            <View style={styles.navRow}>
+              <Button
+                title="← Back: Exam"
+                variant="secondary"
+                onPress={() => setCurrentStep(1)}
+              />
+              <Button
+                title="Next: Select Halls →"
+                onPress={() => setCurrentStep(3)}
+              />
             </View>
-            <View style={styles.capacityDivider} />
-            <View style={styles.capacityCol}>
-              <Text style={styles.capacityLabel}>Selected Hall Seats</Text>
-              <Text style={[styles.capacityVal, { color: hasSufficientCapacity ? colors.successText : colors.warningText }]}>
-                {totalSelectedCapacity}
-              </Text>
-            </View>
-            <View style={styles.capacityDivider} />
-            <View style={styles.capacityCol}>
-              <Text style={styles.capacityLabel}>Surplus / Deficit</Text>
-              <Text style={[styles.capacityVal, { color: hasSufficientCapacity ? colors.successText : colors.errorText }]}>
-                {totalSelectedCapacity - selectedExamRegCount >= 0
-                  ? `+${totalSelectedCapacity - selectedExamRegCount}`
-                  : `${totalSelectedCapacity - selectedExamRegCount}`}
-              </Text>
-            </View>
-          </View>
+          </Card>
+        )}
 
-          {/* Generate Button */}
-          <Pressable
-            style={[styles.generateBtn, generating && styles.btnDisabled]}
-            onPress={handleGenerate}
-            disabled={generating}
-          >
-            {generating ? (
-              <View style={styles.btnRow}>
-                <ActivityIndicator color="#FFFFFF" size="small" />
-                <Text style={[styles.generateBtnText, { marginLeft: 10 }]}>Running Auto-Allocation Engine...</Text>
+        {/* STEP 3: HALLS & CAPACITY VALIDATION */}
+        {currentStep === 3 && (
+          <Card style={styles.stepCard}>
+            <View style={styles.stepHeader}>
+              <Text style={styles.stepTitle}>Step 3: Examination Halls & Capacity</Text>
+              <Text style={styles.stepSub}>Toggle rooms to include in this allocation</Text>
+            </View>
+
+            {/* Capacity Meter Bar */}
+            <View style={styles.capacityCard}>
+              <View style={styles.capacityTop}>
+                <Text style={styles.capacityLabel}>
+                  Required Seats: <Text style={{ fontWeight: "700" }}>{selectedExamRegCount}</Text> • Total Selected: <Text style={{ fontWeight: "700" }}>{totalCapacity}</Text>
+                </Text>
+                <Text style={[styles.capacityPct, { color: hasEnoughSeats ? colors.successText : colors.dangerText }]}>
+                  {hasEnoughSeats ? "SUFFICIENT CAPACITY" : "INSUFFICIENT CAPACITY"}
+                </Text>
               </View>
-            ) : (
-              <View style={styles.btnRow}>
-                <Ionicons name="sparkles" size={18} color="#FFFFFF" style={{ marginRight: 8 }} />
-                <Text style={styles.generateBtnText}>Generate Seating Arrangement</Text>
+              <Meter percent={occupancyPct} color={hasEnoughSeats ? colors.success : colors.danger} />
+            </View>
+
+            <View style={styles.hallsList}>
+              {halls.map((h) => {
+                const isSelected = selectedHallIds.includes(h.id);
+                return (
+                  <Pressable
+                    key={h.id}
+                    onPress={() => handleToggleHall(h.id)}
+                    style={[styles.hallItem, isSelected && styles.hallItemActive]}
+                  >
+                    <View style={styles.hallItemLeft}>
+                      <Ionicons
+                        name={isSelected ? "checkbox" : "square-outline"}
+                        size={18}
+                        color={isSelected ? colors.primary : colors.textMuted}
+                        style={{ marginRight: 10 }}
+                      />
+                      <View>
+                        <Text style={styles.hallName}>{h.hall_code || h.name}</Text>
+                        <Text style={styles.hallSub}>{h.building} (Floor {h.floor})</Text>
+                      </View>
+                    </View>
+                    <Text style={styles.hallCap}>{h.capacity} seats</Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+
+            <View style={styles.navRow}>
+              <Button
+                title="← Back: Strategy"
+                variant="secondary"
+                onPress={() => setCurrentStep(2)}
+              />
+              <Button
+                title="Next: Review →"
+                onPress={() => setCurrentStep(4)}
+              />
+            </View>
+          </Card>
+        )}
+
+        {/* STEP 4: REVIEW & CONFIRM */}
+        {currentStep === 4 && (
+          <Card style={styles.stepCard}>
+            <View style={styles.stepHeader}>
+              <Text style={styles.stepTitle}>Step 4: Review Allocation Parameters</Text>
+              <Text style={styles.stepSub}>Confirm configuration before generating seating arrangement</Text>
+            </View>
+
+            <View style={styles.reviewBox}>
+              <View style={styles.reviewItem}>
+                <Text style={styles.reviewLabel}>Selected Exam</Text>
+                <Text style={styles.reviewVal}>{selectedExam?.course_name || selectedExam?.name} ({selectedExam?.course_code || selectedExam?.subject_code})</Text>
               </View>
-            )}
-          </Pressable>
-        </View>
+              <View style={styles.reviewItem}>
+                <Text style={styles.reviewLabel}>Registered Candidates</Text>
+                <Text style={styles.reviewVal}>{selectedExamRegCount} Candidates</Text>
+              </View>
+              <View style={styles.reviewItem}>
+                <Text style={styles.reviewLabel}>Seating Strategy</Text>
+                <Text style={[styles.reviewVal, { color: colors.primaryDark }]}>{selectedStrategy}</Text>
+              </View>
+              <View style={styles.reviewItem}>
+                <Text style={styles.reviewLabel}>Included Halls</Text>
+                <Text style={styles.reviewVal}>{selectedHalls.map((h) => h.hall_code || h.name).join(", ")} ({totalCapacity} seats)</Text>
+              </View>
+            </View>
 
-        {/* Previously Saved Seating Plans */}
-        <View style={styles.historySection}>
-          <Text style={styles.historyHeading}>Saved Seating Arrangements</Text>
-          <Text style={styles.historySub}>Inspect interactive hall visual grid & publish live arrangements</Text>
+            <View style={styles.navRow}>
+              <Button
+                title="← Back: Halls"
+                variant="secondary"
+                onPress={() => setCurrentStep(3)}
+              />
+              <Button
+                title="Proceed to Generate →"
+                onPress={() => setCurrentStep(5)}
+              />
+            </View>
+          </Card>
+        )}
 
+        {/* STEP 5: RUN GENERATOR */}
+        {currentStep === 5 && (
+          <Card style={styles.stepCard}>
+            <View style={styles.stepHeader}>
+              <Text style={styles.stepTitle}>Step 5: Run Automated Engine</Text>
+              <Text style={styles.stepSub}>Execute allocation algorithm and generate hall seating chart</Text>
+            </View>
+
+            <View style={styles.generateCtaBox}>
+              <View style={styles.sparkleIcon}>
+                <Ionicons name="sparkles" size={32} color={colors.primary} />
+              </View>
+              <Text style={styles.generateCtaTitle}>Ready to Allocate Seats</Text>
+              <Text style={styles.generateCtaSub}>
+                The allocation engine will interleave candidate branches, optimize bench assignments, and generate official visual seating plans.
+              </Text>
+
+              <Button
+                title={generating ? "Running Allocation Engine..." : "Generate Seating Plan Now"}
+                loading={generating}
+                onPress={handleGenerate}
+                style={{ width: "100%", maxWidth: 360, marginTop: 14 }}
+              />
+            </View>
+
+            <View style={styles.navRow}>
+              <Button
+                title="← Back: Review"
+                variant="secondary"
+                onPress={() => setCurrentStep(4)}
+              />
+            </View>
+          </Card>
+        )}
+
+        {/* Saved Seating Plans Table */}
+        <Text style={styles.sectionHeading}>Generated Seating Arrangements</Text>
+
+        <Card style={{ padding: 0, overflow: "hidden" }}>
           {plans.length === 0 ? (
-            <Text style={styles.noPlansText}>No seating arrangements generated yet.</Text>
+            <View style={{ padding: 20 }}>
+              <Text style={styles.emptyText}>No seating plans currently generated.</Text>
+            </View>
           ) : (
             plans.map((p) => {
               const isPub = (p.status || "").toUpperCase() === "PUBLISHED";
+              // Plan table rows must NOT be pressable if they contain a button (nested buttons are invalid HTML on web)
               return (
-                <Pressable
-                  key={p.id}
-                  style={styles.planCard}
-                  onPress={() => navigation.navigate("SeatingPlanDetail", { planId: p.id })}
-                >
-                  <View style={styles.planCardTop}>
-                    <Text style={styles.planExamName}>{p.plan_name || p.exam_name || "Seating Plan"}</Text>
-                    <Badge
-                      label={p.status || "DRAFT"}
-                      variant={isPub ? "success" : "warning"}
+                <View key={p.id} style={styles.planTableRow}>
+                  <View style={{ flex: 1, marginRight: 12 }}>
+                    <Text style={styles.planName}>{p.plan_name || p.exam_name || "Seating Plan"}</Text>
+                    <Text style={styles.planSub}>
+                      📅 {p.exam_date} • Allocated: {p.allocated_seats || p.total_allocated || 0} candidates • Version {p.version || 1}
+                    </Text>
+                  </View>
+
+                  <View style={styles.planActionCol}>
+                    <View style={[styles.statusBadge, isPub ? styles.statusPub : styles.statusDraft]}>
+                      <Text style={[styles.statusBadgeText, isPub ? styles.statusTextPub : styles.statusTextDraft]}>
+                        {p.status || "DRAFT"}
+                      </Text>
+                    </View>
+
+                    <Button
+                      title="Inspect Grid →"
                       size="sm"
+                      variant="outline"
+                      onPress={() => navigation.navigate("SeatingPlanDetail", { planId: p.id })}
                     />
                   </View>
-
-                  <Text style={styles.planMeta}>
-                    📅 {p.exam_date} • {p.start_time?.slice(0, 5)} - {p.end_time?.slice(0, 5)} • Version {p.version || 1}
-                  </Text>
-                  <Text style={styles.planAllocated}>
-                    👥 Allocated: <Text style={{ fontWeight: "700", color: colors.text }}>{p.allocated_seats || p.total_allocated || 0} candidates</Text>
-                  </Text>
-
-                  <View style={styles.planActionRow}>
-                    <Text style={styles.viewPlanLink}>View Visual Hall Grid & Allocations →</Text>
-                  </View>
-                </Pressable>
+                </View>
               );
             })
           )}
-        </View>
+        </Card>
       </ScrollView>
-    </ResponsiveLayout>
+    </AppLayout>
   );
 }
 
 const styles = StyleSheet.create({
   scroll: {
-    padding: 18,
+    padding: 20,
     paddingBottom: 40,
+    gap: 16,
   },
   scrollDesktop: {
-    maxWidth: 1140,
+    maxWidth: 1160,
     width: "100%",
     alignSelf: "center",
   },
-  stepCard: {
-    backgroundColor: colors.surface,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: colors.border,
-    padding: 16,
-    marginBottom: 16,
-    ...shadows.sm,
+  wizardNavCard: {
+    padding: 12,
   },
-  stepHeader: {
+  wizardStepsRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  wizardStepBtn: {
     flexDirection: "row",
     alignItems: "center",
-    marginBottom: 12,
+    gap: 6,
+    cursor: "pointer",
   },
-  stepBadge: {
-    width: 26,
-    height: 26,
-    borderRadius: 13,
-    backgroundColor: colors.primaryLight,
-    justifyContent: "center",
+  stepCircle: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: colors.surfaceAlt,
+    borderWidth: 1,
+    borderColor: colors.border,
     alignItems: "center",
-    marginRight: 10,
+    justifyContent: "center",
   },
-  stepBadgeText: {
+  stepCircleActive: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  stepCirclePast: {
+    backgroundColor: colors.success,
+    borderColor: colors.success,
+  },
+  stepNumText: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: colors.textSecondary,
+  },
+  stepNumTextActive: {
+    color: colors.textInverse,
+  },
+  stepLabel: {
     fontSize: 12,
-    fontWeight: typography.weights.bold,
-    color: colors.primaryDark,
+    fontWeight: "500",
+    color: colors.textSecondary,
+  },
+  stepLabelActive: {
+    fontWeight: "700",
+    color: colors.primary,
+  },
+  stepCard: {
+    gap: 16,
+  },
+  stepHeader: {
+    gap: 2,
   },
   stepTitle: {
-    fontSize: 14,
-    fontWeight: typography.weights.bold,
+    fontSize: 16,
+    fontWeight: "700",
     color: colors.text,
   },
   stepSub: {
-    fontSize: 11,
+    fontSize: 12,
     color: colors.textSecondary,
-    marginTop: 1,
   },
-  selectAllLink: {
-    fontSize: 12,
-    fontWeight: typography.weights.bold,
-    color: colors.primary,
-  },
-  examPickerScroll: {
-    flexDirection: "row",
-    marginBottom: 10,
-  },
-  examChip: {
-    width: 170,
-    padding: 12,
-    borderRadius: 10,
-    backgroundColor: colors.surfaceAlt,
-    borderWidth: 1,
-    borderColor: colors.border,
-    marginRight: 10,
-  },
-  examChipActive: {
-    backgroundColor: colors.primaryLight,
-    borderColor: colors.primary,
-  },
-  examChipCode: {
-    fontSize: 12,
-    fontWeight: typography.weights.bold,
-    color: colors.textSecondary,
-    marginBottom: 2,
-  },
-  examChipCodeActive: {
-    color: colors.primaryDark,
-  },
-  examChipName: {
-    fontSize: 12,
-    fontWeight: typography.weights.semibold,
-    color: colors.text,
-    marginBottom: 4,
-  },
-  examChipNameActive: {
-    color: colors.primaryDark,
-  },
-  examChipDate: {
-    fontSize: 11,
-    color: colors.textMuted,
-  },
-  examChipDateActive: {
-    color: colors.primary,
-  },
-  selectedExamBox: {
-    backgroundColor: colors.surfaceAlt,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: colors.border,
-    padding: 12,
-    marginTop: 4,
-  },
-  selectedExamTop: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
-  selectedExamTitle: {
-    fontSize: 13,
-    fontWeight: typography.weights.bold,
-    color: colors.text,
-  },
-  selectedExamMeta: {
-    fontSize: 11,
-    color: colors.textSecondary,
-    marginTop: 2,
-  },
-  selectedExamDept: {
-    fontSize: 11,
-    color: colors.textMuted,
-    marginTop: 2,
-  },
-  regCountPill: {
-    backgroundColor: colors.primaryLight,
-    borderWidth: 1,
-    borderColor: colors.primaryMuted,
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    alignItems: "center",
-  },
-  regCountNum: {
-    fontSize: 16,
-    fontWeight: typography.weights.extrabold,
-    color: colors.primaryDark,
-  },
-  regCountLabel: {
-    fontSize: 10,
-    color: colors.primary,
-    fontWeight: typography.weights.semibold,
-  },
-  emptyRegWarning: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: colors.warningLight,
-    padding: 8,
-    borderRadius: 6,
-    marginTop: 8,
-  },
-  emptyRegWarningText: {
-    flex: 1,
-    fontSize: 11,
-    color: colors.warningText,
-    fontWeight: typography.weights.medium,
-  },
-  autoRegisterBtn: {
-    backgroundColor: colors.warningText,
-    paddingVertical: 4,
-    paddingHorizontal: 8,
-    borderRadius: 4,
-  },
-  autoRegisterBtnText: {
-    fontSize: 10,
-    fontWeight: typography.weights.bold,
-    color: "#FFFFFF",
-  },
-  noExamText: {
-    fontSize: 12,
-    color: colors.textMuted,
-    paddingVertical: 8,
-  },
-  hallsGrid: {
+  examGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: 8,
+    gap: 12,
   },
-  hallSelectCard: {
+  examChoice: {
     flex: 1,
-    minWidth: 140,
+    minWidth: 260,
     backgroundColor: colors.surfaceAlt,
-    borderRadius: 8,
+    borderRadius: radii.md,
     borderWidth: 1.5,
     borderColor: colors.border,
-    padding: 10,
+    padding: 12,
+    gap: 6,
+    cursor: "pointer",
   },
-  hallSelectCardActive: {
+  examChoiceActive: {
     backgroundColor: colors.primaryLight,
     borderColor: colors.primary,
   },
-  hallSelectCardTop: {
+  examChoiceTop: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 4,
   },
-  hallSelectCode: {
+  examChoiceCode: {
     fontSize: 12,
-    fontWeight: typography.weights.bold,
-    color: colors.text,
+    fontWeight: "700",
+    color: colors.textSecondary,
   },
-  hallSelectCodeActive: {
+  examChoiceCodeActive: {
     color: colors.primaryDark,
   },
-  hallSelectBuilding: {
-    fontSize: 11,
-    color: colors.textSecondary,
-  },
-  hallSelectCap: {
-    fontSize: 10,
-    color: colors.textMuted,
-    marginTop: 4,
-  },
-  capacitySummaryBox: {
-    flexDirection: "row",
-    borderRadius: 10,
-    borderWidth: 1,
-    paddingVertical: 10,
-    marginBottom: 14,
-  },
-  capacityOk: {
-    backgroundColor: colors.successLight,
-    borderColor: colors.successBorder,
-  },
-  capacityWarn: {
-    backgroundColor: colors.warningLight,
-    borderColor: colors.warningBorder,
-  },
-  capacityCol: {
-    flex: 1,
-    alignItems: "center",
-  },
-  capacityLabel: {
-    fontSize: 10,
-    color: colors.textSecondary,
-    fontWeight: typography.weights.semibold,
-  },
-  capacityVal: {
-    fontSize: 17,
-    fontWeight: typography.weights.extrabold,
-    color: colors.text,
-    marginTop: 2,
-  },
-  capacityDivider: {
-    width: 1,
-    backgroundColor: colors.border,
-    alignSelf: "center",
-    height: "70%",
-  },
-  generateBtn: {
-    height: 46,
-    backgroundColor: colors.primary,
-    borderRadius: 8,
-    justifyContent: "center",
-    alignItems: "center",
-    ...shadows.sm,
-  },
-  btnDisabled: {
-    opacity: 0.65,
-  },
-  btnRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  generateBtnText: {
+  examChoiceName: {
     fontSize: 13,
-    fontWeight: typography.weights.bold,
-    color: "#FFFFFF",
-  },
-  historySection: {
-    marginTop: 8,
-  },
-  historyHeading: {
-    fontSize: 14,
-    fontWeight: typography.weights.bold,
+    fontWeight: "600",
     color: colors.text,
   },
-  historySub: {
-    fontSize: 12,
-    color: colors.textSecondary,
-    marginBottom: 10,
-  },
-  noPlansText: {
-    fontSize: 12,
+  examChoiceDate: {
+    fontSize: 11,
     color: colors.textMuted,
-    textAlign: "center",
-    paddingVertical: 16,
   },
-  planCard: {
-    backgroundColor: colors.surface,
-    borderRadius: 12,
-    borderWidth: 1,
+  strategyRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 14,
+  },
+  strategyCard: {
+    flex: 1,
+    minWidth: 280,
+    backgroundColor: colors.surfaceAlt,
+    borderRadius: radii.lg,
+    borderWidth: 1.5,
     borderColor: colors.border,
-    padding: 14,
-    marginBottom: 10,
-    ...shadows.sm,
+    padding: 16,
+    gap: 8,
+    cursor: "pointer",
   },
-  planCardTop: {
+  strategyCardActive: {
+    backgroundColor: colors.primaryLight,
+    borderColor: colors.primary,
+  },
+  strategyTop: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 4,
   },
-  planExamName: {
-    fontSize: 13,
-    fontWeight: typography.weights.bold,
+  strategyIconBox: {
+    width: 38,
+    height: 38,
+    borderRadius: radii.md,
+    backgroundColor: colors.surface,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  strategyTitle: {
+    fontSize: 14,
+    fontWeight: "700",
     color: colors.text,
-    flex: 1,
-    marginRight: 8,
   },
-  planMeta: {
+  strategyDesc: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    lineHeight: 18,
+  },
+  capacityCard: {
+    backgroundColor: colors.surfaceAlt,
+    borderRadius: radii.md,
+    padding: 12,
+    gap: 6,
+  },
+  capacityTop: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+  },
+  capacityLabel: {
+    fontSize: 12,
+    color: colors.textSecondary,
+  },
+  capacityPct: {
+    fontSize: 11,
+    fontWeight: "700",
+  },
+  hallsList: {
+    gap: 8,
+  },
+  hallItem: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    backgroundColor: colors.surface,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: 12,
+    cursor: "pointer",
+  },
+  hallItemActive: {
+    backgroundColor: colors.primaryLight,
+    borderColor: colors.primary,
+  },
+  hallItemLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  hallName: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: colors.text,
+  },
+  hallSub: {
     fontSize: 11,
     color: colors.textSecondary,
   },
-  planAllocated: {
-    fontSize: 11,
+  hallCap: {
+    fontSize: 12,
+    fontWeight: "600",
     color: colors.textSecondary,
-    marginTop: 3,
   },
-  planActionRow: {
-    marginTop: 8,
-    paddingTop: 8,
+  reviewBox: {
+    backgroundColor: colors.surfaceAlt,
+    borderRadius: radii.md,
+    padding: 16,
+    gap: 12,
+  },
+  reviewItem: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  reviewLabel: {
+    fontSize: 12,
+    color: colors.textSecondary,
+  },
+  reviewVal: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: colors.text,
+  },
+  generateCtaBox: {
+    alignItems: "center",
+    paddingVertical: 24,
+    gap: 8,
+  },
+  sparkleIcon: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: colors.primaryLight,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 6,
+  },
+  generateCtaTitle: {
+    fontSize: 18,
+    fontWeight: "700",
+    color: colors.text,
+  },
+  generateCtaSub: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    textAlign: "center",
+    maxWidth: 420,
+    lineHeight: 18,
+  },
+  navRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginTop: 10,
+    paddingTop: 10,
     borderTopWidth: 1,
     borderTopColor: colors.borderLight,
   },
-  viewPlanLink: {
+  sectionHeading: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: colors.text,
+    letterSpacing: -0.2,
+    marginTop: 6,
+  },
+  planTableRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.borderLight,
+  },
+  planName: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: colors.text,
+  },
+  planSub: {
     fontSize: 11,
-    fontWeight: typography.weights.bold,
-    color: colors.primary,
+    color: colors.textSecondary,
+    marginTop: 2,
+  },
+  planActionCol: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  statusBadge: {
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: radii.xs,
+  },
+  statusPub: {
+    backgroundColor: colors.successLight,
+  },
+  statusDraft: {
+    backgroundColor: colors.warningLight,
+  },
+  statusBadgeText: {
+    fontSize: 10,
+    fontWeight: "700",
+    letterSpacing: 0.4,
+  },
+  statusTextPub: {
+    color: colors.successText,
+  },
+  statusTextDraft: {
+    color: colors.warningText,
+  },
+  emptyText: {
+    fontSize: 12,
+    color: colors.textMuted,
+    textAlign: "center",
   },
 });

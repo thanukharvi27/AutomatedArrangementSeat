@@ -3,36 +3,43 @@ import {
   View,
   Text,
   StyleSheet,
-  FlatList,
-  TextInput,
-  Pressable,
+  ScrollView,
   RefreshControl,
-  Modal,
-  ActivityIndicator,
+  Pressable,
   useWindowDimensions,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { ResponsiveLayout } from "../../components/ResponsiveLayout";
-import { Badge } from "../../components/Badge";
-import { LoadingSpinner } from "../../components/LoadingSpinner";
-import { EmptyState } from "../../components/EmptyState";
-import { colors, typography, shadows } from "../../theme/colors";
+import { AppLayout } from "../../components/layout/AppLayout";
+import { Card } from "../../components/common/Card";
+import { Button } from "../../components/common/Button";
+import { Tabs } from "../../components/common/Tabs";
+import { SearchInput, Input } from "../../components/common/Input";
+import { Select } from "../../components/common/Select";
+import { ModalDialog } from "../../components/common/ModalDialog";
+import { EmptyState } from "../../components/common/EmptyState";
+import { LoadingSkeleton } from "../../components/common/LoadingSkeleton";
+import { colors, radii, textStyles, shadows } from "../../theme/tokens";
 import { showAlert } from "../../utils/alerts";
 import api, { examApi, departmentApi } from "../../services/api";
 
 export default function ExamManagementScreen({ navigation }) {
   const { width } = useWindowDimensions();
-  const isDesktop = width >= 900;
+  const isDesktop = width >= 768;
 
+  const [activeTab, setActiveTab] = useState("UPCOMING"); // UPCOMING | PAST | ALL
   const [exams, setExams] = useState([]);
   const [departments, setDepartments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [search, setSearch] = useState("");
 
-  // Add Exam Modal State
+  // Modals state
   const [showAddModal, setShowAddModal] = useState(false);
-  const [creating, setCreating] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editingExam, setEditingExam] = useState(null);
+  const [submitting, setSubmitting] = useState(false);
+
+  // Form states for Add (POST)
   const [examName, setExamName] = useState("");
   const [subjectCode, setSubjectCode] = useState("");
   const [deptId, setDeptId] = useState("");
@@ -42,27 +49,29 @@ export default function ExamManagementScreen({ navigation }) {
   const [endTime, setEndTime] = useState("12:30");
   const [autoRegister, setAutoRegister] = useState(true);
 
-  const fetchExamsAndDepts = async () => {
+  // Form states for Edit (PATCH: name, subject_code, status only)
+  const [editName, setEditName] = useState("");
+  const [editCode, setEditCode] = useState("");
+  const [editStatus, setEditStatus] = useState("SCHEDULED");
+
+  const loadExams = async () => {
     try {
-      const [examsRes, deptsRes] = await Promise.allSettled([
+      const [exRes, deptRes] = await Promise.allSettled([
         examApi.getAll(),
         departmentApi.getAll(),
       ]);
 
-      if (examsRes.status === "fulfilled") {
-        const edata = examsRes.value.data || examsRes.value;
-        if (edata.success) {
-          setExams(edata.exams || []);
-        }
+      if (exRes.status === "fulfilled") {
+        const eData = exRes.value.data || exRes.value;
+        setExams(eData.exams || []);
       }
 
-      if (deptsRes.status === "fulfilled") {
-        const ddata = deptsRes.value.data || deptsRes.value;
-        if (ddata.success) {
-          setDepartments(ddata.departments || []);
-          if (!deptId && ddata.departments?.length > 0) {
-            setDeptId(String(ddata.departments[0].id));
-          }
+      if (deptRes.status === "fulfilled") {
+        const dData = deptRes.value.data || deptRes.value;
+        const depts = dData.departments || [];
+        setDepartments(depts);
+        if (!deptId && depts.length > 0) {
+          setDeptId(String(depts[0].id));
         }
       }
     } catch (err) {
@@ -74,7 +83,7 @@ export default function ExamManagementScreen({ navigation }) {
   };
 
   useEffect(() => {
-    fetchExamsAndDepts();
+    loadExams();
   }, []);
 
   const handleCreateExam = async () => {
@@ -86,7 +95,7 @@ export default function ExamManagementScreen({ navigation }) {
       return;
     }
 
-    setCreating(true);
+    setSubmitting(true);
     try {
       const payload = {
         name: trimmedName,
@@ -101,20 +110,54 @@ export default function ExamManagementScreen({ navigation }) {
 
       const res = await examApi.create(payload);
       const data = res.data || res;
-
       if (data.success) {
-        showAlert("Exam Created", `Examination ${trimmedName} (${trimmedCode}) scheduled successfully!`);
+        showAlert("Exam Created", `Examination ${trimmedName} scheduled successfully!`);
         setShowAddModal(false);
         setExamName("");
         setSubjectCode("");
-        fetchExamsAndDepts();
+        loadExams();
       } else {
         showAlert("Error", data.error || "Could not schedule exam.");
       }
     } catch (err) {
-      showAlert("Scheduling Failed", err.response?.data?.error || err.message || "Failed to create exam.");
+      showAlert("Error", err.response?.data?.error || err.message || "Failed to schedule exam.");
     } finally {
-      setCreating(false);
+      setSubmitting(false);
+    }
+  };
+
+  const handleOpenEdit = (exam) => {
+    setEditingExam(exam);
+    setEditName(exam.course_name || exam.name);
+    setEditCode(exam.course_code || exam.subject_code);
+    setEditStatus(exam.status || "SCHEDULED");
+    setShowEditModal(true);
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editingExam) return;
+    setSubmitting(true);
+    try {
+      // PATCH: name, subject_code, status only as per API prompt constraints
+      const payload = {
+        name: editName.trim(),
+        subject_code: editCode.trim().toUpperCase(),
+        status: editStatus,
+      };
+
+      const res = await api.patch(`/exams/${editingExam.id}`, payload);
+      const data = res.data || res;
+      if (data.success) {
+        showAlert("Updated", "Examination details updated successfully.");
+        setShowEditModal(false);
+        loadExams();
+      } else {
+        showAlert("Error", data.error || "Could not update exam.");
+      }
+    } catch (err) {
+      showAlert("Update Error", err.response?.data?.error || err.message || "Failed to update exam.");
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -123,510 +166,418 @@ export default function ExamManagementScreen({ navigation }) {
       const res = await examApi.registerStudents(exam.id);
       const data = res.data || res;
       if (data.success) {
-        showAlert("Students Registered", data.message || "Eligible students registered for this exam.");
-        fetchExamsAndDepts();
+        showAlert("Students Registered", data.message || "Department students registered for exam!");
+        loadExams();
       } else {
         showAlert("Notice", data.error || "Could not register students.");
       }
     } catch (err) {
-      showAlert("Registration Failed", err.response?.data?.error || err.message || "Failed to register.");
+      showAlert("Registration Error", err.response?.data?.error || err.message || "Failed to register.");
     }
   };
 
+  // Filter exams by tab & search query
+  const todayStr = new Date().toISOString().slice(0, 10);
+
   const filteredExams = exams.filter((e) => {
-    if (!search.trim()) return true;
+    // Search query filter
     const q = search.toLowerCase().trim();
-    return (
+    const matchSearch =
+      !q ||
       (e.course_code || e.subject_code || "").toLowerCase().includes(q) ||
       (e.course_name || e.name || "").toLowerCase().includes(q) ||
-      (e.department_name || "").toLowerCase().includes(q)
-    );
+      (e.department_name || "").toLowerCase().includes(q);
+
+    if (!matchSearch) return false;
+
+    // Tab filter
+    if (activeTab === "UPCOMING") {
+      return (e.exam_date || "") >= todayStr || e.status === "SCHEDULED";
+    }
+    if (activeTab === "PAST") {
+      return (e.exam_date || "") < todayStr && e.status !== "SCHEDULED";
+    }
+    return true; // ALL
   });
 
+  // Group exams by date for the timeline
+  const groupedByDate = filteredExams.reduce((acc, exam) => {
+    const d = exam.exam_date || "Undated";
+    if (!acc[d]) acc[d] = [];
+    acc[d].push(exam);
+    return acc;
+  }, {});
+
+  const dateKeys = Object.keys(groupedByDate).sort();
+
   return (
-    <ResponsiveLayout
-      title="Examination Schedules"
-      subtitle={`${exams.length} university examinations configured in system`}
+    <AppLayout
+      title="Examination Timetable"
+      subtitle={`${exams.length} examinations scheduled across academic sessions`}
+      breadcrumb="Management / Exams"
       currentRouteName="ExamManagement"
       rightAction={
-        <Pressable
-          style={styles.addBtn}
+        <Button
+          title="Schedule Exam"
+          size="sm"
+          icon={<Ionicons name="calendar-outline" size={14} color="#FFFFFF" />}
           onPress={() => setShowAddModal(true)}
-        >
-          <Ionicons name="calendar-outline" size={15} color="#FFFFFF" style={{ marginRight: 6 }} />
-          <Text style={styles.addBtnText}>Schedule Exam</Text>
-        </Pressable>
+        />
       }
     >
-      <View style={[styles.container, isDesktop && styles.containerDesktop]}>
-        {/* Search Bar */}
-        <View style={styles.filterSection}>
-          <View style={styles.searchBox}>
-            <Ionicons name="search" size={16} color={colors.textMuted} style={{ marginRight: 8 }} />
-            <TextInput
-              style={styles.searchInput}
-              placeholder="Search by Exam Name, Subject Code, or Department..."
-              placeholderTextColor={colors.textMuted}
-              value={search}
-              onChangeText={setSearch}
-              autoCapitalize="none"
-            />
-            {search ? (
-              <Pressable onPress={() => setSearch("")} hitSlop={8}>
-                <Ionicons name="close-circle" size={16} color={colors.textMuted} />
-              </Pressable>
-            ) : null}
-          </View>
-        </View>
+      <ScrollView
+        contentContainerStyle={[
+          styles.scroll,
+          isDesktop && styles.scrollDesktop,
+        ]}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); loadExams(); }} />
+        }
+      >
+        {/* Tabs: Upcoming / Past / All */}
+        <Card style={{ padding: 0 }}>
+          <Tabs
+            tabs={[
+              { key: "UPCOMING", label: "Upcoming Exams", count: exams.filter((e) => (e.exam_date || "") >= todayStr || e.status === "SCHEDULED").length },
+              { key: "PAST", label: "Past Exams" },
+              { key: "ALL", label: "All Scheduled", count: exams.length },
+            ]}
+            activeKey={activeTab}
+            onChange={setActiveTab}
+          />
+        </Card>
 
+        {/* Search */}
+        <Card style={styles.searchCard}>
+          <SearchInput
+            value={search}
+            onChangeText={setSearch}
+            placeholder="Search by Exam Name, Subject Code, or Department..."
+          />
+        </Card>
+
+        {/* Timeline Grouped by Date */}
         {loading ? (
-          <LoadingSpinner message="Loading exam schedules..." />
+          <LoadingSkeleton height={200} />
+        ) : dateKeys.length === 0 ? (
+          <EmptyState
+            iconName="calendar-outline"
+            title="No Examinations Found"
+            message={search ? `No exams matched "${search}".` : "No examinations found in this category."}
+            actionLabel="Schedule First Exam"
+            onAction={() => setShowAddModal(true)}
+          />
         ) : (
-          <FlatList
-            data={filteredExams}
-            keyExtractor={(item) => String(item.id)}
-            contentContainerStyle={styles.listContent}
-            refreshControl={
-              <RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); fetchExamsAndDepts(); }} />
-            }
-            ListEmptyComponent={
-              <EmptyState
-                iconName="calendar-outline"
-                title="No Examinations Scheduled"
-                message={search ? `No exams matched "${search}".` : "No upcoming examinations currently scheduled."}
-                actionLabel="Schedule First Exam"
-                onAction={() => setShowAddModal(true)}
-              />
-            }
-            renderItem={({ item }) => (
-              <View style={styles.examCard}>
-                <View style={styles.cardHeader}>
-                  <View style={styles.examCodeBadge}>
-                    <Text style={styles.examCodeText}>
-                      {item.course_code || item.subject_code}
+          <View style={styles.timelineList}>
+            {dateKeys.map((dateStr) => (
+              <View key={dateStr} style={styles.dateGroup}>
+                <View style={styles.dateHeader}>
+                  <Ionicons name="calendar" size={14} color={colors.primary} style={{ marginRight: 6 }} />
+                  <Text style={styles.dateHeaderText}>{dateStr}</Text>
+                  <View style={styles.dateCountBadge}>
+                    <Text style={styles.dateCountBadgeText}>
+                      {groupedByDate[dateStr].length} exam{groupedByDate[dateStr].length > 1 ? "s" : ""}
                     </Text>
                   </View>
-                  <Badge
-                    label={item.status || "SCHEDULED"}
-                    variant={item.status === "COMPLETED" ? "success" : "info"}
-                    size="sm"
-                  />
                 </View>
 
-                <Text style={styles.examTitle}>{item.course_name || item.name}</Text>
+                <View style={styles.examCardsCol}>
+                  {groupedByDate[dateStr].map((exam) => (
+                    <Card key={exam.id} style={styles.examCard}>
+                      <View style={styles.examTopRow}>
+                        <View style={styles.codeBadge}>
+                          <Text style={styles.codeBadgeText}>
+                            {exam.course_code || exam.subject_code}
+                          </Text>
+                        </View>
+                        <View style={[styles.statusBadge, exam.status === "COMPLETED" ? styles.statusCompleted : styles.statusScheduled]}>
+                          <Text style={[styles.statusBadgeText, exam.status === "COMPLETED" ? styles.statusTextCompleted : styles.statusTextScheduled]}>
+                            {exam.status || "SCHEDULED"}
+                          </Text>
+                        </View>
+                      </View>
 
-                <View style={styles.metaRow}>
-                  <Text style={styles.metaText}>
-                    📅 Date: <Text style={{ fontWeight: "700", color: colors.text }}>{item.exam_date}</Text> • Timing: {item.start_time?.slice(0, 5)} - {item.end_time?.slice(0, 5)} ({item.session || "Session"})
-                  </Text>
-                  <Text style={styles.metaText}>
-                    Department: {item.department_name || "Engineering"} • Semester {item.semester}
-                  </Text>
-                  <Text style={[styles.metaText, { color: colors.primaryDark, fontWeight: "600", marginTop: 2 }]}>
-                    👥 Registered Students: {item.registered_count || item.total_students || 0}
-                  </Text>
-                </View>
+                      <Text style={styles.examTitle}>{exam.course_name || exam.name}</Text>
 
-                {/* Card Action Row */}
-                <View style={styles.cardActions}>
-                  <Pressable
-                    style={styles.actionChip}
-                    onPress={() => handleRegisterEligible(item)}
-                  >
-                    <Ionicons name="people" size={13} color={colors.primary} style={{ marginRight: 4 }} />
-                    <Text style={styles.actionChipText}>Sync Registered Students</Text>
-                  </Pressable>
+                      <View style={styles.metaRow}>
+                        <Text style={styles.metaText}>
+                          ⏰ {exam.start_time?.slice(0, 5)} - {exam.end_time?.slice(0, 5)} ({exam.session || "Session"})
+                        </Text>
+                        <Text style={styles.metaText}>
+                          🏛️ {exam.department_name || "Engineering"} • Semester {exam.semester}
+                        </Text>
+                        <Text style={[styles.metaText, { color: colors.primaryDark, fontWeight: "600" }]}>
+                          👥 Registered Candidates: {exam.registered_count || exam.total_students || 0}
+                        </Text>
+                      </View>
 
-                  <Pressable
-                    style={[styles.actionChip, styles.actionChipPrimary]}
-                    onPress={() => navigation.navigate("SeatingPlans")}
-                  >
-                    <Ionicons name="layers" size={13} color="#FFFFFF" style={{ marginRight: 4 }} />
-                    <Text style={styles.actionChipPrimaryText}>Seating Allocation →</Text>
-                  </Pressable>
+                      {/* Actions */}
+                      <View style={styles.actionRow}>
+                        <Button
+                          title="Register Students"
+                          size="sm"
+                          variant="secondary"
+                          icon={<Ionicons name="people-outline" size={13} color={colors.text} />}
+                          onPress={() => handleRegisterEligible(exam)}
+                        />
+                        <Button
+                          title="Edit"
+                          size="sm"
+                          variant="ghost"
+                          icon={<Ionicons name="create-outline" size={13} color={colors.textSecondary} />}
+                          onPress={() => handleOpenEdit(exam)}
+                        />
+                        <Button
+                          title="Seating Plan →"
+                          size="sm"
+                          variant="outline"
+                          onPress={() => navigation.navigate("SeatingPlans")}
+                        />
+                      </View>
+                    </Card>
+                  ))}
                 </View>
               </View>
-            )}
-          />
+            ))}
+          </View>
         )}
 
-        {/* Schedule Exam Modal */}
-        <Modal
+        {/* Schedule Exam Modal (POST) */}
+        <ModalDialog
           visible={showAddModal}
-          transparent
-          animationType="fade"
-          onRequestClose={() => setShowAddModal(false)}
+          onClose={() => setShowAddModal(false)}
+          title="Schedule New Examination"
+          subtitle="Add subject code, timetable, and department"
+          maxWidth={480}
         >
-          <View style={styles.modalBackdrop}>
-            <View style={styles.modalCard}>
-              <View style={styles.modalHeader}>
-                <View>
-                  <Text style={styles.modalTitle}>Schedule New Exam</Text>
-                  <Text style={styles.modalSub}>Add course and official exam timetable</Text>
-                </View>
-                <Pressable onPress={() => setShowAddModal(false)} hitSlop={8}>
-                  <Ionicons name="close" size={20} color={colors.textSecondary} />
-                </Pressable>
-              </View>
-
-              <View style={styles.modalForm}>
-                <View style={styles.modalInputRow}>
-                  <View style={{ flex: 1, marginRight: 8 }}>
-                    <Text style={styles.modalLabel}>Subject Code *</Text>
-                    <TextInput
-                      style={styles.modalInput}
-                      placeholder="e.g. 21CS51"
-                      placeholderTextColor={colors.textMuted}
-                      value={subjectCode}
-                      onChangeText={setSubjectCode}
-                      autoCapitalize="characters"
-                    />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.modalLabel}>Semester *</Text>
-                    <TextInput
-                      style={styles.modalInput}
-                      placeholder="5"
-                      placeholderTextColor={colors.textMuted}
-                      value={semester}
-                      onChangeText={setSemester}
-                      keyboardType="numeric"
-                    />
-                  </View>
-                </View>
-
-                <View style={styles.modalInputGroup}>
-                  <Text style={styles.modalLabel}>Subject / Course Name *</Text>
-                  <TextInput
-                    style={styles.modalInput}
-                    placeholder="e.g. Database Management Systems"
-                    placeholderTextColor={colors.textMuted}
-                    value={examName}
-                    onChangeText={setExamName}
-                  />
-                </View>
-
-                <View style={styles.modalInputGroup}>
-                  <Text style={styles.modalLabel}>Department *</Text>
-                  <View style={styles.deptPickerRow}>
-                    {departments.map((d) => (
-                      <Pressable
-                        key={d.id}
-                        style={[
-                          styles.deptPickerChip,
-                          deptId === String(d.id) && styles.deptPickerChipActive,
-                        ]}
-                        onPress={() => setDeptId(String(d.id))}
-                      >
-                        <Text
-                          style={[
-                            styles.deptPickerChipText,
-                            deptId === String(d.id) && styles.deptPickerChipTextActive,
-                          ]}
-                        >
-                          {d.code}
-                        </Text>
-                      </Pressable>
-                    ))}
-                  </View>
-                </View>
-
-                <View style={styles.modalInputGroup}>
-                  <Text style={styles.modalLabel}>Exam Date (YYYY-MM-DD) *</Text>
-                  <TextInput
-                    style={styles.modalInput}
-                    placeholder="2026-11-15"
-                    placeholderTextColor={colors.textMuted}
-                    value={examDate}
-                    onChangeText={setExamDate}
-                  />
-                </View>
-
-                <View style={styles.modalInputRow}>
-                  <View style={{ flex: 1, marginRight: 8 }}>
-                    <Text style={styles.modalLabel}>Start Time (HH:MM) *</Text>
-                    <TextInput
-                      style={styles.modalInput}
-                      placeholder="09:30"
-                      placeholderTextColor={colors.textMuted}
-                      value={startTime}
-                      onChangeText={setStartTime}
-                    />
-                  </View>
-
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.modalLabel}>End Time (HH:MM) *</Text>
-                    <TextInput
-                      style={styles.modalInput}
-                      placeholder="12:30"
-                      placeholderTextColor={colors.textMuted}
-                      value={endTime}
-                      onChangeText={setEndTime}
-                    />
-                  </View>
-                </View>
-
-                {/* Auto register checkbox */}
-                <Pressable
-                  style={styles.checkboxRow}
-                  onPress={() => setAutoRegister(!autoRegister)}
-                >
-                  <Ionicons
-                    name={autoRegister ? "checkbox" : "square-outline"}
-                    size={20}
-                    color={autoRegister ? colors.primary : colors.textMuted}
-                    style={{ marginRight: 8 }}
-                  />
-                  <Text style={styles.checkboxText}>
-                    Auto-register all eligible active students from department
-                  </Text>
-                </Pressable>
-
-                <Pressable
-                  style={[styles.saveBtn, creating && styles.btnDisabled]}
-                  onPress={handleCreateExam}
-                  disabled={creating}
-                >
-                  {creating ? (
-                    <ActivityIndicator size="small" color="#FFFFFF" />
-                  ) : (
-                    <Text style={styles.saveBtnText}>Save Examination Schedule</Text>
-                  )}
-                </Pressable>
-              </View>
+          <View style={styles.modalForm}>
+            <View style={styles.modalRow}>
+              <Input
+                label="Subject Code *"
+                placeholder="e.g. 21CS51"
+                value={subjectCode}
+                onChangeText={setSubjectCode}
+                autoCapitalize="characters"
+                style={{ flex: 1 }}
+              />
+              <Input
+                label="Semester *"
+                placeholder="5"
+                value={semester}
+                onChangeText={setSemester}
+                keyboardType="numeric"
+                style={{ flex: 1 }}
+              />
             </View>
+
+            <Input
+              label="Subject / Course Name *"
+              placeholder="e.g. Database Management Systems"
+              value={examName}
+              onChangeText={setExamName}
+            />
+
+            <Select
+              label="Department *"
+              value={deptId}
+              onChange={setDeptId}
+              options={departments.map((d) => ({ value: String(d.id), label: `${d.code} - ${d.name}` }))}
+            />
+
+            <Input
+              label="Exam Date (YYYY-MM-DD) *"
+              placeholder="2026-11-15"
+              value={examDate}
+              onChangeText={setExamDate}
+            />
+
+            <View style={styles.modalRow}>
+              <Input
+                label="Start Time (HH:MM) *"
+                placeholder="09:30"
+                value={startTime}
+                onChangeText={setStartTime}
+                style={{ flex: 1 }}
+              />
+              <Input
+                label="End Time (HH:MM) *"
+                placeholder="12:30"
+                value={endTime}
+                onChangeText={setEndTime}
+                style={{ flex: 1 }}
+              />
+            </View>
+
+            <Button
+              title="Schedule Examination"
+              loading={submitting}
+              onPress={handleCreateExam}
+              style={{ marginTop: 10 }}
+            />
           </View>
-        </Modal>
-      </View>
-    </ResponsiveLayout>
+        </ModalDialog>
+
+        {/* Edit Exam Modal (PATCH) */}
+        <ModalDialog
+          visible={showEditModal}
+          onClose={() => setShowEditModal(false)}
+          title="Edit Examination"
+          subtitle="Update course name, code, or schedule status"
+          maxWidth={460}
+        >
+          <View style={styles.modalForm}>
+            <Input
+              label="Subject Code *"
+              value={editCode}
+              onChangeText={setEditCode}
+              autoCapitalize="characters"
+            />
+            <Input
+              label="Course / Exam Name *"
+              value={editName}
+              onChangeText={setEditName}
+            />
+            <Select
+              label="Exam Status"
+              value={editStatus}
+              onChange={setEditStatus}
+              options={[
+                { value: "SCHEDULED", label: "SCHEDULED" },
+                { value: "IN_PROGRESS", label: "IN PROGRESS" },
+                { value: "COMPLETED", label: "COMPLETED" },
+                { value: "CANCELLED", label: "CANCELLED" },
+              ]}
+            />
+
+            <Button
+              title="Update Examination"
+              loading={submitting}
+              onPress={handleSaveEdit}
+              style={{ marginTop: 10 }}
+            />
+          </View>
+        </ModalDialog>
+      </ScrollView>
+    </AppLayout>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.background,
+  scroll: {
+    padding: 20,
+    paddingBottom: 40,
+    gap: 16,
   },
-  containerDesktop: {
-    maxWidth: 1140,
+  scrollDesktop: {
+    maxWidth: 1160,
     width: "100%",
     alignSelf: "center",
   },
-  addBtn: {
-    backgroundColor: colors.primary,
-    borderRadius: 7,
-    paddingVertical: 7,
-    paddingHorizontal: 12,
+  searchCard: {
+    padding: 12,
+  },
+  timelineList: {
+    gap: 18,
+  },
+  dateGroup: {
+    gap: 10,
+  },
+  dateHeader: {
     flexDirection: "row",
     alignItems: "center",
+    paddingHorizontal: 4,
   },
-  addBtnText: {
-    color: "#FFFFFF",
-    fontSize: 12,
-    fontWeight: typography.weights.bold,
-  },
-  filterSection: {
-    padding: 16,
-    backgroundColor: colors.surface,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
-  searchBox: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: colors.surfaceAlt,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: colors.border,
-    paddingHorizontal: 10,
-    height: 40,
-  },
-  searchInput: {
-    flex: 1,
+  dateHeaderText: {
     fontSize: 13,
+    fontWeight: "700",
     color: colors.text,
+    letterSpacing: -0.2,
   },
-  listContent: {
-    padding: 16,
-    paddingBottom: 40,
-    gap: 12,
+  dateCountBadge: {
+    backgroundColor: colors.surfaceAlt,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: radii.sm,
+    marginLeft: 8,
+  },
+  dateCountBadgeText: {
+    fontSize: 10,
+    fontWeight: "600",
+    color: colors.textSecondary,
+  },
+  examCardsCol: {
+    gap: 10,
   },
   examCard: {
-    backgroundColor: colors.surface,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: colors.border,
-    padding: 16,
-    ...shadows.sm,
+    gap: 8,
   },
-  cardHeader: {
+  examTopRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 8,
   },
-  examCodeBadge: {
+  codeBadge: {
     backgroundColor: colors.primaryLight,
     paddingHorizontal: 8,
     paddingVertical: 3,
-    borderRadius: 4,
+    borderRadius: radii.xs,
   },
-  examCodeText: {
-    fontSize: 12,
-    fontWeight: typography.weights.bold,
+  codeBadgeText: {
+    fontSize: 11,
+    fontWeight: "700",
     color: colors.primaryDark,
+  },
+  statusBadge: {
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: radii.xs,
+  },
+  statusScheduled: {
+    backgroundColor: colors.primaryLight,
+  },
+  statusCompleted: {
+    backgroundColor: colors.successLight,
+  },
+  statusBadgeText: {
+    fontSize: 10,
+    fontWeight: "700",
+    letterSpacing: 0.4,
+  },
+  statusTextScheduled: {
+    color: colors.primaryDark,
+  },
+  statusTextCompleted: {
+    color: colors.successText,
   },
   examTitle: {
     fontSize: 15,
-    fontWeight: typography.weights.bold,
+    fontWeight: "700",
     color: colors.text,
-    marginBottom: 6,
+    letterSpacing: -0.2,
   },
   metaRow: {
-    gap: 2,
-    marginBottom: 12,
+    gap: 3,
   },
   metaText: {
     fontSize: 12,
     color: colors.textSecondary,
   },
-  cardActions: {
+  actionRow: {
     flexDirection: "row",
+    alignItems: "center",
+    flexWrap: "wrap",
     gap: 8,
     paddingTop: 10,
     borderTopWidth: 1,
     borderTopColor: colors.borderLight,
-  },
-  actionChip: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingVertical: 6,
-    paddingHorizontal: 10,
-    borderRadius: 6,
-    backgroundColor: colors.surfaceAlt,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  actionChipText: {
-    fontSize: 11,
-    fontWeight: typography.weights.semibold,
-    color: colors.primaryDark,
-  },
-  actionChipPrimary: {
-    backgroundColor: colors.primary,
-    borderColor: colors.primary,
-  },
-  actionChipPrimaryText: {
-    fontSize: 11,
-    fontWeight: typography.weights.bold,
-    color: "#FFFFFF",
-  },
-  modalBackdrop: {
-    flex: 1,
-    backgroundColor: "rgba(15, 23, 42, 0.5)",
-    justifyContent: "center",
-    alignItems: "center",
-    padding: 16,
-  },
-  modalCard: {
-    width: "100%",
-    maxWidth: 480,
-    backgroundColor: colors.surface,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: colors.border,
-    padding: 20,
-    ...shadows.lg,
-  },
-  modalHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "flex-start",
-    marginBottom: 14,
-  },
-  modalTitle: {
-    fontSize: 16,
-    fontWeight: typography.weights.extrabold,
-    color: colors.text,
-  },
-  modalSub: {
-    fontSize: 12,
-    color: colors.textSecondary,
-    marginTop: 2,
-  },
-  modalForm: {
-    gap: 10,
-  },
-  modalInputGroup: {},
-  modalInputRow: {
-    flexDirection: "row",
-  },
-  modalLabel: {
-    fontSize: 11,
-    fontWeight: typography.weights.bold,
-    color: colors.text,
-    marginBottom: 4,
-  },
-  modalInput: {
-    height: 40,
-    backgroundColor: colors.surfaceAlt,
-    borderRadius: 6,
-    borderWidth: 1,
-    borderColor: colors.border,
-    paddingHorizontal: 10,
-    fontSize: 13,
-    color: colors.text,
-  },
-  deptPickerRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 6,
-  },
-  deptPickerChip: {
-    paddingVertical: 4,
-    paddingHorizontal: 9,
-    borderRadius: 6,
-    backgroundColor: colors.surfaceAlt,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  deptPickerChipActive: {
-    backgroundColor: colors.primaryLight,
-    borderColor: colors.primary,
-  },
-  deptPickerChipText: {
-    fontSize: 11,
-    fontWeight: typography.weights.semibold,
-    color: colors.textSecondary,
-  },
-  deptPickerChipTextActive: {
-    color: colors.primaryDark,
-    fontWeight: typography.weights.bold,
-  },
-  checkboxRow: {
-    flexDirection: "row",
-    alignItems: "center",
     marginTop: 4,
   },
-  checkboxText: {
-    fontSize: 11,
-    color: colors.textSecondary,
-    flex: 1,
+  modalForm: {
+    gap: 12,
   },
-  saveBtn: {
-    height: 44,
-    backgroundColor: colors.primary,
-    borderRadius: 8,
-    alignItems: "center",
-    justifyContent: "center",
-    marginTop: 8,
-  },
-  btnDisabled: {
-    opacity: 0.65,
-  },
-  saveBtnText: {
-    color: "#FFFFFF",
-    fontSize: 13,
-    fontWeight: typography.weights.bold,
+  modalRow: {
+    flexDirection: "row",
+    gap: 10,
   },
 });

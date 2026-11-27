@@ -3,13 +3,12 @@ import { NavigationContainer } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { Text, View, StyleSheet, ActivityIndicator } from "react-native";
-import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
+import { Ionicons } from "@expo/vector-icons";
 import { AuthContext } from "../context/AuthContext";
-import { colors, typography } from "../theme/colors";
+import { colors, textStyles } from "../theme/tokens";
 
 import SplashScreen from "../screens/auth/SplashScreen";
 import LoginScreen from "../screens/auth/LoginScreen";
-import RegisterScreen from "../screens/auth/RegisterScreen";
 
 import StudentHomeScreen from "../screens/student/StudentHomeScreen";
 import StudentExamsScreen from "../screens/student/StudentExamsScreen";
@@ -25,22 +24,19 @@ import SeatingGeneratorScreen from "../screens/admin/SeatingGeneratorScreen";
 import SeatingPlanDetailScreen from "../screens/admin/SeatingPlanDetailScreen";
 import FacultyManagementScreen from "../screens/admin/FacultyManagementScreen";
 import ReportsScreen from "../screens/admin/ReportsScreen";
+import SettingsScreen from "../screens/admin/SettingsScreen";
 
 import FacultyDutiesScreen from "../screens/faculty/FacultyDutiesScreen";
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
 
-const TabBarIcon = ({ type, name, label, focused }) => {
+const TabBarIcon = ({ name, label, focused }) => {
   const color = focused ? colors.primary : colors.textSecondary;
 
   return (
     <View style={navStyles.tabItem}>
-      {type === "material" ? (
-        <MaterialCommunityIcons name={name} size={20} color={color} />
-      ) : (
-        <Ionicons name={name} size={20} color={color} />
-      )}
+      <Ionicons name={name} size={20} color={color} />
       <Text style={[navStyles.tabLabel, { color, fontWeight: focused ? "700" : "500" }]}>
         {label}
       </Text>
@@ -63,7 +59,7 @@ const StudentTabs = () => (
     <Tab.Screen
       name="FindSeat"
       component={FindSeatScreen}
-      options={{ tabBarIcon: ({ focused }) => <TabBarIcon type="material" name={focused ? "seat" : "seat-outline"} label="Find Seat" focused={focused} /> }}
+      options={{ tabBarIcon: ({ focused }) => <TabBarIcon name={focused ? "search" : "search-outline"} label="Find Seat" focused={focused} /> }}
     />
     <Tab.Screen
       name="StudentProfile"
@@ -110,6 +106,11 @@ const FacultyTabs = () => (
       component={FacultyDutiesScreen}
       options={{ tabBarIcon: ({ focused }) => <TabBarIcon name={focused ? "shield-checkmark" : "shield-checkmark-outline"} label="Duties" focused={focused} /> }}
     />
+    <Tab.Screen
+      name="FacultyProfile"
+      component={StudentProfileScreen}
+      options={{ tabBarIcon: ({ focused }) => <TabBarIcon name={focused ? "person" : "person-outline"} label="Profile" focused={focused} /> }}
+    />
   </Tab.Navigator>
 );
 
@@ -126,13 +127,12 @@ export const AppNavigator = () => {
 
   return (
     <NavigationContainer>
-      <Stack.Navigator screenOptions={{ headerShown: false }}>
+      <Stack.Navigator screenOptions={{ headerShown: false }} initialRouteName="PublicFindSeat">
         {!user ? (
           <>
-            <Stack.Screen name="Splash" component={SplashScreen} />
-            <Stack.Screen name="Login" component={LoginScreen} />
-            <Stack.Screen name="Register" component={RegisterScreen} />
             <Stack.Screen name="PublicFindSeat" component={FindSeatScreen} />
+            <Stack.Screen name="Login" component={LoginScreen} />
+            <Stack.Screen name="Splash" component={FindSeatScreen} />
           </>
         ) : (user.role || "").toUpperCase() === "ADMIN" ? (
           <>
@@ -145,20 +145,31 @@ export const AppNavigator = () => {
             <Stack.Screen name="HallManagement" component={HallManagementScreen} />
             <Stack.Screen name="SeatingPlans" component={SeatingGeneratorScreen} />
             <Stack.Screen name="SeatingPlanDetail" component={SeatingPlanDetailScreen} />
+            <Stack.Screen name="FacultyDuties" component={FacultyDutiesScreen} />
             <Stack.Screen name="AdminReports" component={ReportsScreen} />
+            <Stack.Screen name="Settings" component={SettingsScreen} />
             <Stack.Screen name="AdminProfile" component={StudentProfileScreen} />
             <Stack.Screen name="PublicFindSeat" component={FindSeatScreen} />
           </>
         ) : (user.role || "").toUpperCase() === "FACULTY" ? (
           <>
             <Stack.Screen name="FacultyRoot" component={FacultyTabs} />
+            <Stack.Screen name="FacultyDuties" component={FacultyDutiesScreen} />
             <Stack.Screen name="SeatingPlanDetail" component={SeatingPlanDetailScreen} />
+            <Stack.Screen name="Settings" component={SettingsScreen} />
+            <Stack.Screen name="AdminProfile" component={StudentProfileScreen} />
             <Stack.Screen name="PublicFindSeat" component={FindSeatScreen} />
           </>
         ) : (
           <>
             <Stack.Screen name="StudentRoot" component={StudentTabs} />
+            <Stack.Screen name="StudentHome" component={StudentHomeScreen} />
+            <Stack.Screen name="StudentExams" component={StudentExamsScreen} />
+            <Stack.Screen name="Settings" component={SettingsScreen} />
+            <Stack.Screen name="StudentProfile" component={StudentProfileScreen} />
+            <Stack.Screen name="AdminProfile" component={StudentProfileScreen} />
             <Stack.Screen name="PublicFindSeat" component={FindSeatScreen} />
+            <Stack.Screen name="FindSeat" component={FindSeatScreen} />
           </>
         )}
       </Stack.Navigator>
@@ -180,7 +191,8 @@ const navStyles = StyleSheet.create({
     justifyContent: "center",
   },
   tabLabel: {
-    fontSize: 10,
+    ...textStyles.caption,
+    fontSize: 11,
     marginTop: 2,
   },
 });

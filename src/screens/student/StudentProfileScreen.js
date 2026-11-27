@@ -1,181 +1,310 @@
 import React, { useContext } from "react";
-import { View, Text, StyleSheet, Pressable, ScrollView, useWindowDimensions } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  useWindowDimensions,
+  Platform,
+} from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { AuthContext } from "../../context/AuthContext";
-import { Badge } from "../../components/Badge";
-import { colors, typography, shadows } from "../../theme/colors";
+import { AppLayout } from "../../components/layout/AppLayout";
+import { Card } from "../../components/common/Card";
+import { Button } from "../../components/common/Button";
+import { FadeIn } from "../../components/common/Motion";
+import { colors, textStyles, spacing, radii, shadows, tones } from "../../theme/tokens";
 import { confirmSignOut } from "../../utils/alerts";
+import { getApiBaseUrl } from "../../services/api";
 
 export default function StudentProfileScreen({ navigation }) {
   const { user, logout } = useContext(AuthContext);
   const { width } = useWindowDimensions();
   const isDesktop = width >= 768;
 
-  const confirmLogout = () => {
-    confirmSignOut(logout);
-  };
-
   const role = (user?.role || "STUDENT").toUpperCase();
   const isAdmin = role === "ADMIN";
   const isFaculty = role === "FACULTY";
 
+  const handleLogout = () => {
+    confirmSignOut(logout);
+  };
+
+  const displayName = user?.full_name || user?.username || "ExamEase User";
+  const displayUsername = user?.username || "N/A";
+  const displayEmail = user?.email || "N/A";
+  const displayPhone = user?.phone || user?.student_profile?.phone || "N/A";
+
+  const departmentName =
+    user?.student_profile?.department_name ||
+    user?.faculty_profile?.department_name ||
+    (isAdmin ? "Examination Management Cell" : "Engineering");
+
+  const identifier =
+    user?.student_profile?.usn ||
+    user?.faculty_profile?.faculty_id ||
+    (isAdmin ? "SYSTEM-ADMIN" : displayUsername);
+
+  const semester = user?.student_profile?.semester;
+  const academicYear = user?.student_profile?.academic_year || "2025-2026";
+
+  const roleTone = isAdmin ? tones.blue : isFaculty ? tones.lavender : tones.mint;
+
   return (
-    <SafeAreaView style={styles.safeArea} edges={["top", "bottom"]}>
-      <View style={styles.topHeader}>
-        {navigation.canGoBack() && (
-          <Pressable onPress={() => navigation.goBack()} style={{ marginRight: 10 }}>
-            <Ionicons name="arrow-back" size={20} color={colors.text} />
-          </Pressable>
-        )}
-        <Text style={styles.headerTitle}>
-          {isAdmin ? "Administrator Account" : isFaculty ? "Faculty Account" : "Candidate Profile"}
-        </Text>
-        <Badge label={role} variant={isAdmin ? "info" : isFaculty ? "warning" : "success"} size="sm" />
-      </View>
-
-      <ScrollView contentContainerStyle={[styles.scroll, isDesktop && styles.scrollDesktop]}>
-        <View style={styles.card}>
-          <View style={styles.avatarCircle}>
-            <Text style={styles.avatarText}>
-              {user?.full_name?.charAt(0) || user?.username?.charAt(0) || "U"}
-            </Text>
-          </View>
-          <Text style={styles.name}>{user?.full_name || user?.username}</Text>
-          <Text style={styles.roleSub}>
-            {role} • {user?.student_profile?.usn || user?.username}
-          </Text>
-
-          <View style={styles.infoRow}>
-            <Text style={styles.infoLabel}>Username</Text>
-            <Text style={styles.infoVal}>{user?.username || "N/A"}</Text>
-          </View>
-          <View style={styles.infoRow}>
-            <Text style={styles.infoLabel}>Email</Text>
-            <Text style={styles.infoVal}>{user?.email || "N/A"}</Text>
-          </View>
-
-          {!isAdmin && (
-            <View style={styles.infoRow}>
-              <Text style={styles.infoLabel}>Department</Text>
-              <Text style={styles.infoVal}>
-                {user?.student_profile?.department_name ||
-                  user?.faculty_profile?.department_name ||
-                  "Computer Science & Engineering"}
-              </Text>
+    <AppLayout
+      title="Account Profile"
+      subtitle="Personal information & active credentials"
+      currentRouteName="AdminProfile"
+      actions={
+        <Button
+          title="Sign Out"
+          variant="danger"
+          size="sm"
+          onPress={handleLogout}
+          icon={<Ionicons name="log-out-outline" size={14} color={colors.textInverse} />}
+        />
+      }
+    >
+      <ScrollView
+        contentContainerStyle={[
+          styles.scroll,
+          isDesktop && styles.scrollDesktop,
+        ]}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* Profile Card */}
+        <FadeIn delay={50}>
+          <Card style={styles.profileCard}>
+            <View style={styles.avatarWrap}>
+              <View style={[styles.avatarCircle, { backgroundColor: roleTone.bg }]}>
+                <Text style={[styles.avatarText, { color: roleTone.fg }]}>
+                  {displayName.charAt(0).toUpperCase()}
+                </Text>
+              </View>
+              <View
+                style={[
+                  styles.roleBadge,
+                  { backgroundColor: roleTone.bg, borderColor: roleTone.fg },
+                ]}
+              >
+                <Text style={[styles.roleBadgeText, { color: roleTone.fg }]}>
+                  {role}
+                </Text>
+              </View>
             </View>
-          )}
 
-          {user?.student_profile?.semester ? (
-            <View style={styles.infoRow}>
-              <Text style={styles.infoLabel}>Semester</Text>
-              <Text style={styles.infoVal}>Semester {user?.student_profile?.semester}</Text>
+            <Text style={styles.name}>{displayName}</Text>
+            <Text style={styles.identifierText}>{identifier}</Text>
+
+            {/* Info Grid */}
+            <View style={styles.infoList}>
+              <View style={styles.infoRow}>
+                <Text style={styles.infoLabel}>Username</Text>
+                <Text style={styles.infoVal}>{displayUsername}</Text>
+              </View>
+
+              <View style={styles.infoRow}>
+                <Text style={styles.infoLabel}>Email Address</Text>
+                <Text style={styles.infoVal}>{displayEmail}</Text>
+              </View>
+
+              <View style={styles.infoRow}>
+                <Text style={styles.infoLabel}>Phone Contact</Text>
+                <Text style={styles.infoVal}>{displayPhone}</Text>
+              </View>
+
+              <View style={styles.infoRow}>
+                <Text style={styles.infoLabel}>Department</Text>
+                <Text style={styles.infoVal}>{departmentName}</Text>
+              </View>
+
+              {semester ? (
+                <View style={styles.infoRow}>
+                  <Text style={styles.infoLabel}>Current Semester</Text>
+                  <Text style={styles.infoVal}>Semester {semester}</Text>
+                </View>
+              ) : null}
+
+              <View style={[styles.infoRow, { borderBottomWidth: 0 }]}>
+                <Text style={styles.infoLabel}>Academic Year</Text>
+                <Text style={styles.infoVal}>{academicYear}</Text>
+              </View>
             </View>
-          ) : null}
+          </Card>
+        </FadeIn>
 
-          <Pressable style={styles.logoutBtn} onPress={confirmLogout}>
-            <Ionicons name="log-out-outline" size={18} color="#FFFFFF" style={{ marginRight: 6 }} />
-            <Text style={styles.logoutBtnText}>Sign Out of ExamEase</Text>
-          </Pressable>
-        </View>
+        {/* System & Session Card */}
+        <FadeIn delay={100}>
+          <Card style={styles.systemCard}>
+            <Text style={styles.systemHeading}>SYSTEM & SESSION INFORMATION</Text>
+
+            <View style={styles.systemRow}>
+              <View style={styles.systemIconBg}>
+                <Ionicons name="server-outline" size={16} color={colors.primary} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.systemLabel}>Backend API Endpoint</Text>
+                <Text style={styles.systemValue}>{getApiBaseUrl()}</Text>
+              </View>
+            </View>
+
+            <View style={styles.systemRow}>
+              <View style={styles.systemIconBg}>
+                <Ionicons name="hardware-chip-outline" size={16} color={colors.accent} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.systemLabel}>Active Client Platform</Text>
+                <Text style={styles.systemValue}>
+                  {Platform.OS.toUpperCase()} {Platform.isPad ? "(Tablet)" : ""} • React Native
+                </Text>
+              </View>
+            </View>
+
+            <View style={styles.actionRow}>
+              <Button
+                title="Application Settings"
+                variant="secondary"
+                size="md"
+                onPress={() => navigation.navigate("Settings")}
+                icon={<Ionicons name="settings-outline" size={16} color={colors.text} />}
+                style={{ flex: 1 }}
+              />
+              <Button
+                title="Sign Out"
+                variant="danger"
+                size="md"
+                onPress={handleLogout}
+                icon={<Ionicons name="log-out-outline" size={16} color={colors.textInverse} />}
+                style={{ flex: 1 }}
+              />
+            </View>
+          </Card>
+        </FadeIn>
       </ScrollView>
-    </SafeAreaView>
+    </AppLayout>
   );
 }
 
 const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: colors.background,
-  },
-  topHeader: {
-    height: 54,
-    backgroundColor: colors.surface,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-    paddingHorizontal: 16,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
-  headerTitle: {
-    fontSize: 15,
-    fontWeight: typography.weights.bold,
-    color: colors.text,
-  },
   scroll: {
-    padding: 18,
-    paddingBottom: 40,
+    padding: spacing.md,
+    paddingBottom: spacing["3xl"],
+    gap: spacing.lg,
   },
   scrollDesktop: {
-    maxWidth: 580,
+    maxWidth: 720,
     width: "100%",
     alignSelf: "center",
+    padding: spacing.xl,
   },
-  card: {
-    backgroundColor: colors.surface,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: colors.border,
-    padding: 24,
+  profileCard: {
+    padding: spacing.xl,
     alignItems: "center",
-    ...shadows.sm,
+  },
+  avatarWrap: {
+    position: "relative",
+    marginBottom: spacing.md,
   },
   avatarCircle: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    backgroundColor: colors.primary,
+    width: 72,
+    height: 72,
+    borderRadius: radii.full,
     justifyContent: "center",
     alignItems: "center",
-    marginBottom: 12,
   },
   avatarText: {
-    fontSize: 26,
-    color: "#FFFFFF",
-    fontWeight: typography.weights.bold,
+    ...textStyles.display,
+    fontSize: 32,
+    fontWeight: "800",
+  },
+  roleBadge: {
+    position: "absolute",
+    bottom: -4,
+    alignSelf: "center",
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: radii.full,
+    borderWidth: 1,
+  },
+  roleBadgeText: {
+    ...textStyles.overline,
+    fontSize: 9,
+    fontWeight: "700",
   },
   name: {
-    fontSize: 18,
-    fontWeight: typography.weights.bold,
+    ...textStyles.heading,
+    fontSize: 22,
     color: colors.text,
+    textAlign: "center",
   },
-  roleSub: {
-    fontSize: 12,
+  identifierText: {
+    ...textStyles.subtitle,
     color: colors.textSecondary,
-    marginTop: 3,
-    marginBottom: 20,
+    marginBottom: spacing.xl,
+  },
+  infoList: {
+    width: "100%",
+    backgroundColor: colors.surfaceAlt,
+    borderRadius: radii.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingHorizontal: spacing.lg,
   },
   infoRow: {
-    width: "100%",
     flexDirection: "row",
     justifyContent: "space-between",
-    paddingVertical: 12,
+    alignItems: "center",
+    paddingVertical: spacing.md,
     borderBottomWidth: 1,
     borderBottomColor: colors.borderLight,
   },
   infoLabel: {
-    fontSize: 13,
+    ...textStyles.label,
     color: colors.textSecondary,
   },
   infoVal: {
-    fontSize: 13,
-    fontWeight: typography.weights.semibold,
+    ...textStyles.body,
+    fontWeight: "600",
     color: colors.text,
   },
-  logoutBtn: {
-    marginTop: 24,
-    width: "100%",
-    height: 46,
-    backgroundColor: colors.error,
-    borderRadius: 8,
+  systemCard: {
+    padding: spacing.lg,
+    gap: spacing.md,
+  },
+  systemHeading: {
+    ...textStyles.overline,
+    color: colors.textMuted,
+    letterSpacing: 0.8,
+  },
+  systemRow: {
     flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.md,
+    paddingVertical: 4,
+  },
+  systemIconBg: {
+    width: 36,
+    height: 36,
+    borderRadius: radii.md,
+    backgroundColor: colors.surfaceAlt,
+    borderWidth: 1,
+    borderColor: colors.border,
     justifyContent: "center",
     alignItems: "center",
   },
-  logoutBtnText: {
-    color: "#FFFFFF",
-    fontWeight: typography.weights.bold,
+  systemLabel: {
+    ...textStyles.caption,
+    color: colors.textMuted,
+  },
+  systemValue: {
+    ...textStyles.body,
+    fontWeight: "600",
+    color: colors.text,
     fontSize: 13,
+  },
+  actionRow: {
+    flexDirection: "row",
+    gap: spacing.md,
+    marginTop: spacing.sm,
   },
 });
