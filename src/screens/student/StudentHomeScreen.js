@@ -28,9 +28,11 @@ export default function StudentHomeScreen({ navigation }) {
   const [nextAllocation, setNextAllocation] = useState(null);
   const [upcomingExams, setUpcomingExams] = useState([]);
   const [studentDetails, setStudentDetails] = useState(null);
+  const [error, setError] = useState(null);
 
   const fetchDashboard = useCallback(async () => {
     try {
+      setError(null);
       const res = await api.get("/student/dashboard");
       const data = res.data || res;
       if (data.success) {
@@ -40,6 +42,7 @@ export default function StudentHomeScreen({ navigation }) {
       }
     } catch (err) {
       console.log("Error loading student dashboard:", err?.message);
+      setError(err?.message || "Failed to load dashboard data.");
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -75,10 +78,7 @@ export default function StudentHomeScreen({ navigation }) {
 
   // Check if seat is actually allocated (not just placeholder "TBA")
   const hasSeat = Boolean(
-    nextAllocation &&
-    nextAllocation.has_seating &&
-    nextAllocation.seat_label &&
-    nextAllocation.seat_label !== "TBA"
+    nextAllocation?.seat_label && nextAllocation.seat_label !== "TBA"
   );
 
   return (
@@ -112,6 +112,26 @@ export default function StudentHomeScreen({ navigation }) {
           />
         }
       >
+        {error && !loading && (
+          <Card style={{ marginBottom: 16, backgroundColor: colors.dangerLight, borderColor: colors.dangerBorder }}>
+            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+              <View style={{ flex: 1 }}>
+                <Text style={{ color: colors.dangerText, fontWeight: "600", fontSize: 13 }}>Failed to load student dashboard</Text>
+                <Text style={{ color: colors.dangerText, fontSize: 12, marginTop: 2 }}>{error}</Text>
+              </View>
+              <Button
+                title="Retry"
+                size="sm"
+                variant="secondary"
+                onPress={() => {
+                  setLoading(true);
+                  fetchDashboard();
+                }}
+              />
+            </View>
+          </Card>
+        )}
+
         {/* Student Profile Quick Banner */}
         <FadeIn delay={50}>
           <Card style={styles.profileBanner}>

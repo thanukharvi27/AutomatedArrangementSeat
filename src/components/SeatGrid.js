@@ -49,13 +49,14 @@ export const SeatGrid = ({ hall, seatsGrid = [], onSeatPress, selectedSeatId }) 
                 </View>
 
                 {seats.map((seat) => {
+                  const seatIdentifier = seat.seat_id ?? seat.id;
                   const isOccupied = seat.is_occupied;
-                  const isSelected = selectedSeatId === seat.seat_id;
+                  const isSelected = selectedSeatId === seatIdentifier;
                   const bgColor = isSelected ? colors.selected : (isOccupied ? colors.occupied : colors.available);
 
                   return (
                     <Pressable
-                      key={`seat-${seat.seat_id}`}
+                      key={`seat-${seatIdentifier}`}
                       style={[styles.seatBox, { backgroundColor: bgColor }]}
                       onPress={() => onSeatPress && onSeatPress(seat)}
                     >

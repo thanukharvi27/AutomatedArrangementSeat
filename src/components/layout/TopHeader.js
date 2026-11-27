@@ -139,7 +139,9 @@ export const TopHeader = ({
             ]}
           >
             <View style={styles.menuHeader}>
-              <Text style={styles.menuName}>{user?.full_name || user?.username}</Text>
+              <Text style={styles.menuName}>
+                {user?.student_profile?.full_name || user?.faculty_profile?.full_name || user?.full_name || user?.username}
+              </Text>
               <Text style={styles.menuEmail}>{user?.email || `${user?.username}@college.edu`}</Text>
               <View style={styles.menuRoleBadge}>
                 <Text style={styles.menuRoleText}>{role}</Text>

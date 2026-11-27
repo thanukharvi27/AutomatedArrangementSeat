@@ -48,7 +48,7 @@ export default function SeatingPlanDetailScreen({ route, navigation }) {
         setPlan(data.plan);
         const planHalls = data.halls || data.plan.halls || [];
         setHalls(planHalls);
-        setAllocations(data.plan.allocations || []);
+        setAllocations(planHalls.flatMap((h) => h.allocations || []));
 
         if (planHalls.length > 0 && !selectedHallId) {
           setSelectedHallId(planHalls[0].id || planHalls[0].hall_id);
@@ -142,6 +142,7 @@ export default function SeatingPlanDetailScreen({ route, navigation }) {
       const data = res.data || res;
       if (data.success) {
         showAlert("Seat Reassigned", "Candidate successfully reassigned to target seat.");
+        setTargetSeatId("");
         setShowReassignModal(false);
         setSelectedSeat(null);
         fetchPlanDetail();

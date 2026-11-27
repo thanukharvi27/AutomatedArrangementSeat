@@ -16,7 +16,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { colors } from "../../theme/colors";
 import { ResponsiveLayout } from "../../components/ResponsiveLayout";
 import { LoadingSpinner } from "../../components/LoadingSpinner";
-import { showAlert } from "../../utils/alerts";
+import { showAlert, confirmAction } from "../../utils/alerts";
 import { facultyApi, departmentApi, examApi, hallApi } from "../../services/api";
 
 export default function FacultyManagementScreen({ navigation }) {
@@ -72,20 +72,25 @@ export default function FacultyManagementScreen({ navigation }) {
         hallApi.getAll(),
       ]);
 
-      if (facRes.status === "fulfilled" && facRes.value.data?.faculty) {
-        setFaculty(facRes.value.data.faculty);
+      const facData = facRes.value?.data || facRes.value;
+      if (facRes.status === "fulfilled" && facData?.faculty) {
+        setFaculty(facData.faculty);
       }
-      if (dutiesRes.status === "fulfilled" && dutiesRes.value.data?.assignments) {
-        setDuties(dutiesRes.value.data.assignments);
+      const dutiesData = dutiesRes.value?.data || dutiesRes.value;
+      if (dutiesRes.status === "fulfilled" && (dutiesData?.assignments || dutiesData?.duties)) {
+        setDuties(dutiesData.assignments || dutiesData.duties);
       }
-      if (deptsRes.status === "fulfilled" && deptsRes.value.data?.departments) {
-        setDepartments(deptsRes.value.data.departments);
+      const deptsData = deptsRes.value?.data || deptsRes.value;
+      if (deptsRes.status === "fulfilled" && deptsData?.departments) {
+        setDepartments(deptsData.departments);
       }
-      if (examsRes.status === "fulfilled" && examsRes.value.data?.exams) {
-        setExams(examsRes.value.data.exams);
+      const examsData = examsRes.value?.data || examsRes.value;
+      if (examsRes.status === "fulfilled" && examsData?.exams) {
+        setExams(examsData.exams);
       }
-      if (hallsRes.status === "fulfilled" && hallsRes.value.data?.halls) {
-        setHalls(hallsRes.value.data.halls);
+      const hallsData = hallsRes.value?.data || hallsRes.value;
+      if (hallsRes.status === "fulfilled" && hallsData?.halls) {
+        setHalls(hallsData.halls);
       }
     } catch (err) {
       console.log("Error loading faculty data:", err?.message);
@@ -202,52 +207,41 @@ export default function FacultyManagementScreen({ navigation }) {
   // Toggle active/inactive
   const handleToggleActive = async (item) => {
     const action = item.is_active ? "Deactivate" : "Activate";
-    Alert.alert(
-      `${action} Account`,
-      `Are you sure you want to ${action.toLowerCase()} ${item.full_name} (${item.employee_id})? ${item.is_active ? "They will no longer be able to log in." : "They will be able to log in again."
-      }`,
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: action,
-          style: item.is_active ? "destructive" : "default",
-          onPress: async () => {
-            try {
-              await facultyApi.update(item.id, { is_active: !item.is_active });
-              loadAllData();
-            } catch (err) {
-              showAlert("Error", err.message || `Failed to ${action.toLowerCase()} faculty.`);
-            }
-          },
-        },
-      ]
-    );
+    confirmAction({
+      title: `${action} Account`,
+      message: `Are you sure you want to ${action.toLowerCase()} ${item.full_name} (${item.employee_id})? ${item.is_active ? "They will no longer be able to log in." : "They will be able to log in again."}`,
+      confirmText: action,
+      destructive: item.is_active,
+      onConfirm: async () => {
+        try {
+          await facultyApi.update(item.id, { is_active: !item.is_active });
+          loadAllData();
+        } catch (err) {
+          showAlert("Error", err.message || `Failed to ${action.toLowerCase()} faculty.`);
+        }
+      },
+    });
   };
 
   // Delete Faculty
   const handleDeleteFaculty = (item) => {
-    Alert.alert(
-      "Delete Faculty Member",
-      `Are you sure you want to permanently delete ${item.full_name} (${item.employee_id})? This will also remove their user account and duty assignments.`,
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Delete",
-          style: "destructive",
-          onPress: async () => {
-            try {
-              const res = await facultyApi.delete(item.id);
-              if (res.data?.success || res.success) {
-                showAlert("Deleted", "Faculty member removed from system.");
-                loadAllData();
-              }
-            } catch (err) {
-              showAlert("Error", err.message || "Failed to delete faculty member.");
-            }
-          },
-        },
-      ]
-    );
+    confirmAction({
+      title: "Delete Faculty Member",
+      message: `Are you sure you want to permanently delete ${item.full_name} (${item.employee_id})? This will also remove their user account and duty assignments.`,
+      confirmText: "Delete",
+      destructive: true,
+      onConfirm: async () => {
+        try {
+          const res = await facultyApi.delete(item.id);
+          if (res.data?.success || res.success) {
+            showAlert("Deleted", "Faculty member removed from system.");
+            loadAllData();
+          }
+        } catch (err) {
+          showAlert("Error", err.message || "Failed to delete faculty member.");
+        }
+      },
+    });
   };
 
   // Open Assign Duty Modal (optionally preselect faculty)
@@ -291,26 +285,21 @@ export default function FacultyManagementScreen({ navigation }) {
 
   // Cancel Duty
   const handleCancelDuty = (dutyItem) => {
-    Alert.alert(
-      "Cancel Duty Assignment",
-      `Remove ${dutyItem.faculty_name} from supervising ${dutyItem.hall_name} for ${dutyItem.exam_name}?`,
-      [
-        { text: "No", style: "cancel" },
-        {
-          text: "Yes, Cancel Duty",
-          style: "destructive",
-          onPress: async () => {
-            try {
-              await facultyApi.cancelDuty(dutyItem.id);
-              showAlert("Cancelled", "Invigilation duty assignment removed.");
-              loadAllData();
-            } catch (err) {
-              showAlert("Error", err.message || "Failed to cancel duty.");
-            }
-          },
-        },
-      ]
-    );
+    confirmAction({
+      title: "Cancel Duty Assignment",
+      message: `Remove ${dutyItem.faculty_name} from supervising ${dutyItem.hall_name} for ${dutyItem.exam_name}?`,
+      confirmText: "Yes, Cancel Duty",
+      destructive: true,
+      onConfirm: async () => {
+        try {
+          await facultyApi.cancelDuty(dutyItem.id);
+          showAlert("Cancelled", "Invigilation duty assignment removed.");
+          loadAllData();
+        } catch (err) {
+          showAlert("Error", err.message || "Failed to cancel duty.");
+        }
+      },
+    });
   };
 
   // Filter faculty by search query and active status

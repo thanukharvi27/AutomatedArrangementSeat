@@ -27,7 +27,7 @@ import { Button } from "../../components/common/Button";
 import { FadeIn, Touchable } from "../../components/common/Motion";
 
 export default function LoginScreen({ navigation }) {
-  const { login } = useContext(AuthContext);
+  const { login, updateApiUrl } = useContext(AuthContext);
   const { width } = useWindowDimensions();
   const isDesktop = width >= 860;
 
@@ -102,7 +102,7 @@ export default function LoginScreen({ navigation }) {
     const trimmedPass = password.trim();
 
     if (!trimmedUser || !trimmedPass) {
-      const msg = "Please enter both your username/USN and password.";
+      const msg = "Please enter both your admin username and password.";
       setErrorMessage(msg);
       return;
     }
@@ -137,7 +137,11 @@ export default function LoginScreen({ navigation }) {
       showAlert("Invalid URL", "Please enter a valid backend API URL.");
       return;
     }
-    setApiBaseUrl(trimmed);
+    if (updateApiUrl) {
+      updateApiUrl(trimmed);
+    } else {
+      setApiBaseUrl(trimmed);
+    }
     setServerStatusMessage("API URL updated successfully");
     setTimeout(() => setServerStatusMessage(""), 3000);
   };
@@ -207,8 +211,8 @@ export default function LoginScreen({ navigation }) {
                       <Ionicons name="search-outline" size={16} color={colors.accent} />
                     </View>
                     <View style={styles.featureTextCol}>
-                      <Text style={styles.featureTitle}>Instant USN Lookup</Text>
-                      <Text style={styles.featureDesc}>Public search without requiring login credentials</Text>
+                      <Text style={styles.featureTitle}>Instant Seat & Duty Lookup</Text>
+                      <Text style={styles.featureDesc}>Public search for students and faculty without login credentials</Text>
                     </View>
                   </View>
                 </View>
@@ -232,14 +236,14 @@ export default function LoginScreen({ navigation }) {
                   }}
                   hitSlop={8}
                   accessibilityRole="button"
-                  accessibilityLabel="Back to seat search"
+                  accessibilityLabel="Back to public search"
                 >
                   <Ionicons name="arrow-back" size={16} color={colors.textSecondary} />
-                  <Text style={styles.backBtnText}>Back to seat search</Text>
+                  <Text style={styles.backBtnText}>Back to public search</Text>
                 </Pressable>
 
                 <View style={styles.systemTag}>
-                  <Text style={styles.systemTagText}>STAFF ACCESS</Text>
+                  <Text style={styles.systemTagText}>ADMIN ACCESS</Text>
                 </View>
               </View>
 
@@ -250,13 +254,13 @@ export default function LoginScreen({ navigation }) {
                     <Ionicons name="shield-checkmark" size={24} color={colors.primary} />
                   </View>
                 )}
-                <Text style={styles.heading}>Staff sign in</Text>
+                <Text style={styles.heading}>Admin Sign In</Text>
                 <Text style={styles.subheading}>
-                  For administrators and faculty
+                  Admin Sign In for examination cell administrators
                 </Text>
               </View>
 
-              {/* Error Banner */}
+              {/* Error Banner (displays backend 403 / 401 / connectivity errors) */}
               {errorMessage ? (
                 <View style={styles.errorBox}>
                   <Ionicons name="alert-circle" size={18} color={colors.danger} style={{ marginRight: 8, marginTop: 2 }} />
@@ -288,12 +292,12 @@ export default function LoginScreen({ navigation }) {
               {/* Form Fields */}
               <View style={styles.form}>
                 <View style={styles.inputGroup}>
-                  <Text style={styles.label}>Staff Username</Text>
+                  <Text style={styles.label}>Admin Sign In Username</Text>
                   <View style={styles.inputWrapper}>
                     <Ionicons name="person-outline" size={16} color={colors.textMuted} style={styles.inputIcon} />
                     <TextInput
                       style={styles.input}
-                      placeholder="e.g. admin or faculty1"
+                      placeholder="e.g. admin"
                       placeholderTextColor={colors.textMuted}
                       value={username}
                       onChangeText={(val) => {
@@ -304,6 +308,7 @@ export default function LoginScreen({ navigation }) {
                       autoCapitalize="none"
                       autoCorrect={false}
                       returnKeyType="next"
+                      accessibilityLabel="Admin Sign In Username"
                     />
                   </View>
                 </View>
@@ -326,6 +331,7 @@ export default function LoginScreen({ navigation }) {
                       autoCapitalize="none"
                       returnKeyType="done"
                       onSubmitEditing={handleLogin}
+                      accessibilityLabel="Admin Sign In Password"
                     />
                     <Pressable
                       style={styles.eyeBtn}
@@ -345,19 +351,20 @@ export default function LoginScreen({ navigation }) {
 
                 {/* Submit Button */}
                 <Button
-                  title="Sign In"
+                  title="Admin Sign In"
                   variant="primary"
                   size="lg"
                   onPress={handleLogin}
                   loading={submitting}
                   icon={<Ionicons name="log-in-outline" size={18} color={colors.textInverse} />}
                   style={{ marginTop: spacing.xs }}
+                  accessibilityLabel="Admin Sign In"
                 />
 
-                {/* Demo Account Shortcuts (Staff Only) */}
+                {/* Demo Account Shortcut (Admin Only) */}
                 <View style={styles.demoSection}>
-                  <Text style={styles.demoTitle}>QUICK DEMO SHORTCUTS</Text>
-                  <Text style={styles.demoSub}>Tap a role to autofill staff credentials:</Text>
+                  <Text style={styles.demoTitle}>ADMIN DEMO SHORTCUT</Text>
+                  <Text style={styles.demoSub}>Tap to autofill administrator credentials:</Text>
 
                   <View style={styles.demoGrid}>
                     <Pressable
@@ -373,35 +380,21 @@ export default function LoginScreen({ navigation }) {
                       <Text style={styles.demoRole}>Admin</Text>
                       <Text style={styles.demoUser}>admin</Text>
                     </Pressable>
-
-                    <Pressable
-                      style={[
-                        styles.demoPill,
-                        activeDemo === "faculty" && styles.demoPillActive,
-                      ]}
-                      onPress={() => fillDemo("faculty1", "Faculty@123", "faculty")}
-                    >
-                      <View style={[styles.demoIconBg, { backgroundColor: colors.pastelLavender }]}>
-                        <Ionicons name="briefcase" size={14} color={colors.accent} />
-                      </View>
-                      <Text style={styles.demoRole}>Faculty</Text>
-                      <Text style={styles.demoUser}>faculty1</Text>
-                    </Pressable>
                   </View>
                 </View>
 
-                {/* Back to Seat Search Link */}
+                {/* Back to Public Search Link */}
                 <Pressable
                   style={styles.backToSearchCardLink}
                   onPress={() => navigation.navigate("PublicFindSeat")}
                   hitSlop={8}
                   accessibilityRole="button"
-                  accessibilityLabel="Back to exam seat search"
+                  accessibilityLabel="Back to exam seat and duty search"
                 >
                   <Ionicons name="search-outline" size={14} color={colors.primary} style={{ marginRight: 6 }} />
                   <Text style={styles.backToSearchCardText}>
-                    Looking for student seat allocation?{" "}
-                    <Text style={styles.backToSearchCardBold}>Back to seat search →</Text>
+                    Student or faculty member?{" "}
+                    <Text style={styles.backToSearchCardBold}>Back to public search →</Text>
                   </Text>
                 </Pressable>
 
@@ -462,7 +455,11 @@ export default function LoginScreen({ navigation }) {
                             ]}
                             onPress={() => {
                               setServerUrl(preset.url);
-                              setApiBaseUrl(preset.url);
+                              if (updateApiUrl) {
+                                updateApiUrl(preset.url);
+                              } else {
+                                setApiBaseUrl(preset.url);
+                              }
                               setServerStatusMessage(`Switched to ${preset.label}`);
                               setTimeout(() => setServerStatusMessage(""), 2500);
                             }}

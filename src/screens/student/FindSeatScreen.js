@@ -14,79 +14,161 @@ import { Ionicons } from "@expo/vector-icons";
 import { AuthContext } from "../../context/AuthContext";
 import { Card } from "../../components/common/Card";
 import { Button } from "../../components/common/Button";
-import { EmptyState } from "../../components/common/EmptyState";
 import { LoadingSkeleton } from "../../components/common/LoadingSkeleton";
-import { FadeIn, Touchable, prefersReducedMotion } from "../../components/common/Motion";
-import { colors, textStyles, spacing, radii, shadows, tones } from "../../theme/tokens";
+import { FadeIn } from "../../components/common/Motion";
+import { colors, textStyles, spacing, radii, shadows, transition, motion } from "../../theme/tokens";
 import { showAlert } from "../../utils/alerts";
-import api from "../../services/api";
+import { studentPortalApi, facultyApi } from "../../services/api";
+
+const MODE_STUDENT = "student";
+const MODE_FACULTY = "faculty";
 
 export default function FindSeatScreen({ navigation }) {
   const { user } = useContext(AuthContext);
   const { width } = useWindowDimensions();
   const isDesktop = width >= 768;
 
+  const [lookupMode, setLookupMode] = useState(MODE_STUDENT);
+
+  // Student Seat Lookup state
   const [usn, setUsn] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [results, setResults] = useState(null);
-  const [searched, setSearched] = useState(false);
+  const [studentLoading, setStudentLoading] = useState(false);
+  const [seatResults, setSeatResults] = useState(null);
+  const [studentSearched, setStudentSearched] = useState(false);
   const [lastQueryUsn, setLastQueryUsn] = useState("");
   const [studentNotFound, setStudentNotFound] = useState(false);
   const [studentName, setStudentName] = useState("");
-  const [statusMessage, setStatusMessage] = useState("");
-  const [networkError, setNetworkError] = useState(null);
-  const [rateLimited, setRateLimited] = useState(false);
+  const [studentStatusMessage, setStudentStatusMessage] = useState("");
+  const [studentError, setStudentError] = useState(null);
+  const [studentRateLimited, setStudentRateLimited] = useState(false);
 
-  const handleSearch = async () => {
+  // Faculty Duty Lookup state
+  const [employeeId, setEmployeeId] = useState("");
+  const [facultyLoading, setFacultyLoading] = useState(false);
+  const [dutyResults, setDutyResults] = useState(null);
+  const [facultySearched, setFacultySearched] = useState(false);
+  const [lastQueryEmpId, setLastQueryEmpId] = useState("");
+  const [facultyNotFound, setFacultyNotFound] = useState(false);
+  const [facultyMeta, setFacultyMeta] = useState(null);
+  const [facultyStatusMessage, setFacultyStatusMessage] = useState("");
+  const [facultyError, setFacultyError] = useState(null);
+  const [facultyRateLimited, setFacultyRateLimited] = useState(false);
+
+  const isFacultyMode = lookupMode === MODE_FACULTY;
+
+  const handleSearchStudent = async () => {
     const queryUsn = usn.trim().toUpperCase();
     if (!queryUsn) {
       showAlert("Input Required", "Please enter a valid Student USN.");
       return;
     }
 
-    setLoading(true);
-    setSearched(true);
+    setStudentLoading(true);
+    setStudentSearched(true);
     setLastQueryUsn(queryUsn);
-    setNetworkError(null);
-    setRateLimited(false);
+    setStudentError(null);
+    setStudentRateLimited(false);
     setStudentNotFound(false);
     setStudentName("");
-    setStatusMessage("");
+    setStudentStatusMessage("");
 
     try {
-      const res = await api.get(`/student-portal/find-seat?usn=${encodeURIComponent(queryUsn)}`);
-      const data = res.data || res;
+      const res = await studentPortalApi.publicFindSeat(queryUsn);
+      const data = res?.data || res;
 
-      if (data.success) {
+      if (data?.success) {
         const allocs = data.allocations || [];
-        setResults(allocs);
-        setStudentName(data.student_name || (allocs[0]?.student_name) || "");
-        setStatusMessage(data.message || "");
+        setSeatResults(allocs);
+        setStudentName(data.student_name || allocs[0]?.student_name || "");
+        setStudentStatusMessage(data.message || "");
 
-        if (data.student_found === false || (data.message && data.message.toLowerCase().includes("no student found"))) {
+        if (
+          data.student_found === false ||
+          (data.message && data.message.toLowerCase().includes("no student found"))
+        ) {
           setStudentNotFound(true);
         } else {
           setStudentNotFound(false);
         }
       } else {
-        setResults([]);
-        setNetworkError(data.error || "Could not retrieve seating information.");
+        setSeatResults([]);
+        setStudentError(data?.error || "Could not retrieve seating information.");
       }
     } catch (err) {
-      if (err?.response?.status === 429) {
-        setRateLimited(true);
-        setResults([]);
+      const status = err?.status || err?.response?.status;
+      if (status === 429) {
+        setStudentRateLimited(true);
+        setSeatResults([]);
       } else {
         const errorMsg =
           err?.response?.data?.error ||
           err?.response?.data?.message ||
           err?.message ||
           "Network connection failed. Could not reach server.";
-        setNetworkError(errorMsg);
-        setResults([]);
+        setStudentError(errorMsg);
+        setSeatResults([]);
       }
     } finally {
-      setLoading(false);
+      setStudentLoading(false);
+    }
+  };
+
+  const handleSearchFaculty = async () => {
+    const queryEmpId = employeeId.trim().toUpperCase();
+    if (!queryEmpId) {
+      showAlert("Input Required", "Please enter a valid Faculty Employee ID.");
+      return;
+    }
+
+    setFacultyLoading(true);
+    setFacultySearched(true);
+    setLastQueryEmpId(queryEmpId);
+    setFacultyError(null);
+    setFacultyRateLimited(false);
+    setFacultyNotFound(false);
+    setFacultyMeta(null);
+    setFacultyStatusMessage("");
+
+    try {
+      const res = await facultyApi.publicFindDuties(queryEmpId);
+      const data = res?.data || res;
+
+      if (data?.success) {
+        const duties = data.duties || [];
+        setDutyResults(duties);
+        setFacultyStatusMessage(data.message || "");
+
+        if (data.faculty_found === false) {
+          setFacultyNotFound(true);
+        } else {
+          setFacultyNotFound(false);
+          setFacultyMeta({
+            name: data.faculty_name || "",
+            employeeId: data.employee_id || queryEmpId,
+            departmentCode: data.department_code || "",
+            departmentName: data.department_name || "",
+          });
+        }
+      } else {
+        setDutyResults([]);
+        setFacultyError(data?.error || "Could not retrieve invigilation duties.");
+      }
+    } catch (err) {
+      const status = err?.status || err?.response?.status;
+      if (status === 429) {
+        setFacultyRateLimited(true);
+        setDutyResults([]);
+      } else {
+        const errorMsg =
+          err?.response?.data?.error ||
+          err?.response?.data?.message ||
+          err?.message ||
+          "Network connection failed. Could not reach server.";
+        setFacultyError(errorMsg);
+        setDutyResults([]);
+      }
+    } finally {
+      setFacultyLoading(false);
     }
   };
 
@@ -106,9 +188,15 @@ export default function FindSeatScreen({ navigation }) {
     }
   };
 
-  const goToStaffLogin = () => {
+  const goToAdminLogin = () => {
     navigation.navigate("Login");
   };
+
+  const activeLoading = isFacultyMode ? facultyLoading : studentLoading;
+  const activeError = isFacultyMode ? facultyError : studentError;
+  const activeRateLimited = isFacultyMode ? facultyRateLimited : studentRateLimited;
+  const activeSearched = isFacultyMode ? facultySearched : studentSearched;
+  const activeRetry = isFacultyMode ? handleSearchFaculty : handleSearchStudent;
 
   return (
     <SafeAreaView style={styles.safeArea} edges={["top", "bottom"]}>
@@ -140,17 +228,17 @@ export default function FindSeatScreen({ navigation }) {
         <View style={styles.headerRight}>
           {!user ? (
             <Pressable
-              style={styles.staffLoginHeaderBtn}
-              onPress={goToStaffLogin}
+              style={styles.adminLoginHeaderBtn}
+              onPress={goToAdminLogin}
               hitSlop={8}
               accessibilityRole="button"
-              accessibilityLabel="Staff Sign In"
+              accessibilityLabel="Admin Sign In"
             >
-              <Ionicons name="lock-closed-outline" size={14} color={colors.primary} />
-              <Text style={styles.staffLoginHeaderText}>Staff Login</Text>
+              <Ionicons name="shield-checkmark-outline" size={14} color={colors.primaryDark} />
+              <Text style={styles.adminLoginHeaderText}>Admin Sign In</Text>
             </Pressable>
           ) : (
-            <Text style={styles.headerTitle}>Seat Search</Text>
+            <Text style={styles.headerTitle}>Seat & Duty Lookup</Text>
           )}
         </View>
       </View>
@@ -167,71 +255,170 @@ export default function FindSeatScreen({ navigation }) {
         <FadeIn delay={40} style={styles.heroWrap}>
           <View style={styles.heroPill}>
             <Ionicons name="search" size={12} color={colors.primary} style={{ marginRight: 6 }} />
-            <Text style={styles.heroPillText}>PUBLIC SEAT LOOKUP</Text>
+            <Text style={styles.heroPillText}>
+              {isFacultyMode ? "PUBLIC FACULTY DUTY LOOKUP" : "PUBLIC SEAT LOOKUP"}
+            </Text>
           </View>
-          <Text style={styles.heroHeading}>Find your exam seat</Text>
+          <Text style={styles.heroHeading}>
+            {isFacultyMode ? "Find your invigilation duties" : "Find your exam seat"}
+          </Text>
           <Text style={styles.heroSubtitle}>
-            Enter your University Seat Number (USN) below to find your scheduled examination hall, floor, bench, and assigned seat.
+            {isFacultyMode
+              ? "Enter your Faculty Employee ID below to check your upcoming invigilation assignments, examination halls, and session timings."
+              : "Enter your University Seat Number (USN) below to find your scheduled examination hall, floor, bench, and assigned seat."}
           </Text>
         </FadeIn>
 
-        {/* Large USN Search Card */}
+        {/* Mode Switcher + Search Card */}
         <FadeIn delay={80}>
           <Card style={styles.searchCard}>
-            <Text style={styles.inputLabel}>University Seat Number (USN)</Text>
-            <View style={styles.inputRow}>
-              <View style={styles.inputWrapper}>
+            {/* Segmented Mode Toggle */}
+            <View style={styles.modeSwitchWrap} accessibilityRole="tablist">
+              <Pressable
+                style={[styles.modeTab, !isFacultyMode && styles.modeTabActive]}
+                onPress={() => setLookupMode(MODE_STUDENT)}
+                accessibilityRole="tab"
+                accessibilityState={{ selected: !isFacultyMode }}
+                accessibilityLabel="Find Exam Seat"
+              >
                 <Ionicons
-                  name="card-outline"
-                  size={18}
-                  color={colors.textMuted}
-                  style={styles.inputLeadingIcon}
+                  name="school-outline"
+                  size={15}
+                  color={!isFacultyMode ? colors.primaryDark : colors.textSecondary}
                 />
-                <TextInput
-                  style={styles.textInput}
-                  placeholder="e.g. 1MS22CS001"
-                  placeholderTextColor={colors.textMuted}
-                  value={usn}
-                  onChangeText={(val) => {
-                    setUsn(val);
-                    if (networkError) setNetworkError(null);
-                    if (rateLimited) setRateLimited(false);
-                  }}
-                  autoCapitalize="characters"
-                  autoCorrect={false}
-                  returnKeyType="search"
-                  onSubmitEditing={handleSearch}
-                  accessibilityLabel="University Seat Number input"
-                />
-                {usn ? (
-                  <Pressable
-                    onPress={() => setUsn("")}
-                    hitSlop={8}
-                    style={styles.clearBtn}
-                    accessibilityRole="button"
-                    accessibilityLabel="Clear USN input"
-                  >
-                    <Ionicons name="close-circle" size={18} color={colors.textMuted} />
-                  </Pressable>
-                ) : null}
-              </View>
+                <Text style={[styles.modeTabText, !isFacultyMode && styles.modeTabTextActive]}>
+                  Student Seat (USN)
+                </Text>
+              </Pressable>
 
-              <Button
-                title="Find Seat"
-                variant="primary"
-                size="md"
-                onPress={handleSearch}
-                loading={loading}
-                icon={<Ionicons name="search" size={16} color={colors.textInverse} />}
-                style={styles.findBtn}
-                accessibilityLabel="Find seat allocation"
-              />
+              <Pressable
+                style={[styles.modeTab, isFacultyMode && styles.modeTabActive]}
+                onPress={() => setLookupMode(MODE_FACULTY)}
+                accessibilityRole="tab"
+                accessibilityState={{ selected: isFacultyMode }}
+                accessibilityLabel="Find Faculty Duties"
+              >
+                <Ionicons
+                  name="briefcase-outline"
+                  size={15}
+                  color={isFacultyMode ? colors.primaryDark : colors.textSecondary}
+                />
+                <Text style={[styles.modeTabText, isFacultyMode && styles.modeTabTextActive]}>
+                  Faculty Duties (ID)
+                </Text>
+              </Pressable>
             </View>
+
+            {!isFacultyMode ? (
+              <>
+                <Text style={styles.inputLabel}>University Seat Number (USN)</Text>
+                <View style={styles.inputRow}>
+                  <View style={styles.inputWrapper}>
+                    <Ionicons
+                      name="card-outline"
+                      size={18}
+                      color={colors.textMuted}
+                      style={styles.inputLeadingIcon}
+                    />
+                    <TextInput
+                      style={styles.textInput}
+                      placeholder="e.g. 1MS22CS001"
+                      placeholderTextColor={colors.textMuted}
+                      value={usn}
+                      onChangeText={(val) => {
+                        setUsn(val);
+                        if (studentError) setStudentError(null);
+                        if (studentRateLimited) setStudentRateLimited(false);
+                      }}
+                      autoCapitalize="characters"
+                      autoCorrect={false}
+                      returnKeyType="search"
+                      onSubmitEditing={handleSearchStudent}
+                      accessibilityLabel="University Seat Number input"
+                    />
+                    {usn ? (
+                      <Pressable
+                        onPress={() => setUsn("")}
+                        hitSlop={8}
+                        style={styles.clearBtn}
+                        accessibilityRole="button"
+                        accessibilityLabel="Clear USN input"
+                      >
+                        <Ionicons name="close-circle" size={18} color={colors.textMuted} />
+                      </Pressable>
+                    ) : null}
+                  </View>
+
+                  <Button
+                    title="Find Seat"
+                    variant="primary"
+                    size="md"
+                    onPress={handleSearchStudent}
+                    loading={studentLoading}
+                    icon={<Ionicons name="search" size={16} color={colors.textInverse} />}
+                    style={styles.findBtn}
+                    accessibilityLabel="Find seat allocation"
+                  />
+                </View>
+              </>
+            ) : (
+              <>
+                <Text style={styles.inputLabel}>Faculty Employee ID</Text>
+                <View style={styles.inputRow}>
+                  <View style={styles.inputWrapper}>
+                    <Ionicons
+                      name="id-card-outline"
+                      size={18}
+                      color={colors.textMuted}
+                      style={styles.inputLeadingIcon}
+                    />
+                    <TextInput
+                      style={styles.textInput}
+                      placeholder="e.g. FAC-001"
+                      placeholderTextColor={colors.textMuted}
+                      value={employeeId}
+                      onChangeText={(val) => {
+                        setEmployeeId(val);
+                        if (facultyError) setFacultyError(null);
+                        if (facultyRateLimited) setFacultyRateLimited(false);
+                      }}
+                      autoCapitalize="characters"
+                      autoCorrect={false}
+                      returnKeyType="search"
+                      onSubmitEditing={handleSearchFaculty}
+                      accessibilityLabel="Faculty Employee ID input"
+                    />
+                    {employeeId ? (
+                      <Pressable
+                        onPress={() => setEmployeeId("")}
+                        hitSlop={8}
+                        style={styles.clearBtn}
+                        accessibilityRole="button"
+                        accessibilityLabel="Clear Employee ID input"
+                      >
+                        <Ionicons name="close-circle" size={18} color={colors.textMuted} />
+                      </Pressable>
+                    ) : null}
+                  </View>
+
+                  <Button
+                    title="Find Duties"
+                    variant="primary"
+                    size="md"
+                    onPress={handleSearchFaculty}
+                    loading={facultyLoading}
+                    icon={<Ionicons name="search" size={16} color={colors.textInverse} />}
+                    style={styles.findBtn}
+                    accessibilityLabel="Find faculty duties"
+                  />
+                </View>
+              </>
+            )}
           </Card>
         </FadeIn>
 
         {/* State 1: Rate-limited (HTTP 429) */}
-        {rateLimited && (
+        {activeRateLimited && (
           <FadeIn delay={50}>
             <Card style={styles.warningBox}>
               <View style={styles.alertHeaderRow}>
@@ -245,7 +432,7 @@ export default function FindSeatScreen({ navigation }) {
                 title="Try Again"
                 variant="secondary"
                 size="sm"
-                onPress={handleSearch}
+                onPress={activeRetry}
                 style={{ alignSelf: "flex-start", marginTop: spacing.sm }}
                 accessibilityLabel="Retry search"
               />
@@ -254,19 +441,19 @@ export default function FindSeatScreen({ navigation }) {
         )}
 
         {/* State 2: Network / Server Error with Retry */}
-        {!rateLimited && networkError && (
+        {!activeRateLimited && activeError && (
           <FadeIn delay={50}>
             <Card style={styles.errorBox}>
               <View style={styles.alertHeaderRow}>
                 <Ionicons name="alert-circle" size={20} color={colors.danger} />
                 <Text style={styles.errorTitle}>Connection Problem</Text>
               </View>
-              <Text style={styles.errorBody}>{networkError}</Text>
+              <Text style={styles.errorBody}>{activeError}</Text>
               <Button
                 title="Retry Search"
                 variant="primary"
                 size="sm"
-                onPress={handleSearch}
+                onPress={activeRetry}
                 style={{ alignSelf: "flex-start", marginTop: spacing.sm }}
                 icon={<Ionicons name="refresh" size={14} color={colors.textInverse} />}
                 accessibilityLabel="Retry failed search"
@@ -276,17 +463,16 @@ export default function FindSeatScreen({ navigation }) {
         )}
 
         {/* State 3: Loading Skeleton */}
-        {loading && (
+        {activeLoading && (
           <View style={styles.skeletonWrap}>
             <LoadingSkeleton height={200} borderRadius={radii.lg} />
             <LoadingSkeleton height={140} borderRadius={radii.lg} />
           </View>
         )}
 
-        {/* State 4 & 5: Searched Results */}
-        {!loading && !networkError && !rateLimited && searched && results && (
+        {/* State 4A: Student Seat Results */}
+        {!isFacultyMode && !studentLoading && !studentError && !studentRateLimited && studentSearched && seatResults && (
           <View style={styles.resultsContainer}>
-            {/* Student Not Found */}
             {studentNotFound ? (
               <FadeIn delay={50}>
                 <Card style={styles.emptyCard}>
@@ -302,8 +488,7 @@ export default function FindSeatScreen({ navigation }) {
                   </Text>
                 </Card>
               </FadeIn>
-            ) : results.length === 0 ? (
-              /* Student Found, but no published seating */
+            ) : seatResults.length === 0 ? (
               <FadeIn delay={50}>
                 <Card style={styles.emptyCard}>
                   <View style={[styles.emptyIconCircle, { backgroundColor: colors.warningLight }]}>
@@ -311,7 +496,7 @@ export default function FindSeatScreen({ navigation }) {
                   </View>
                   <Text style={styles.emptyTitle}>Seating Not Published Yet</Text>
                   <Text style={styles.emptyMessage}>
-                    {statusMessage ||
+                    {studentStatusMessage ||
                       `No published seating yet for ${studentName || lastQueryUsn}. Check back closer to the exam.`}
                   </Text>
                   <Text style={styles.emptyHint}>
@@ -320,12 +505,11 @@ export default function FindSeatScreen({ navigation }) {
                 </Card>
               </FadeIn>
             ) : (
-              /* Published Results as SeatCard Tickets */
               <FadeIn delay={50} style={{ gap: spacing.md }}>
                 <View style={styles.resultsHeaderRow}>
                   <View>
                     <Text style={styles.foundCountText}>
-                      Found {results.length} Published Exam Allocation{results.length > 1 ? "s" : ""}
+                      Found {seatResults.length} Published Exam Allocation{seatResults.length > 1 ? "s" : ""}
                     </Text>
                     {studentName ? (
                       <Text style={styles.candidateNameText}>
@@ -338,9 +522,8 @@ export default function FindSeatScreen({ navigation }) {
                   </View>
                 </View>
 
-                {results.map((item, idx) => (
+                {seatResults.map((item, idx) => (
                   <Card key={idx} style={styles.ticketCard}>
-                    {/* Header Banner */}
                     <View style={styles.ticketHeader}>
                       <View style={styles.ticketBadgeRow}>
                         <View style={styles.examCodeBadge}>
@@ -362,7 +545,6 @@ export default function FindSeatScreen({ navigation }) {
                       ) : null}
                     </View>
 
-                    {/* Date & Time Row */}
                     <View style={styles.ticketDateTimeRow}>
                       <View style={styles.ticketDateTimeItem}>
                         <Ionicons name="calendar" size={14} color={colors.primary} />
@@ -383,7 +565,6 @@ export default function FindSeatScreen({ navigation }) {
                       </View>
                     </View>
 
-                    {/* Spotlight Hero Seat Box */}
                     <View style={styles.ticketSpotlightBox}>
                       <View style={styles.spotlightSeatCol}>
                         <Text style={styles.spotlightLabel}>ASSIGNED SEAT</Text>
@@ -418,31 +599,160 @@ export default function FindSeatScreen({ navigation }) {
           </View>
         )}
 
-        {/* State 6: Initial Idle Guide */}
-        {!searched && !loading && (
+        {/* State 4B: Faculty Duty Results */}
+        {isFacultyMode && !facultyLoading && !facultyError && !facultyRateLimited && facultySearched && dutyResults && (
+          <View style={styles.resultsContainer}>
+            {facultyNotFound ? (
+              <FadeIn delay={50}>
+                <Card style={styles.emptyCard}>
+                  <View style={styles.emptyIconCircle}>
+                    <Ionicons name="person-remove-outline" size={32} color={colors.textMuted} />
+                  </View>
+                  <Text style={styles.emptyTitle}>Faculty Record Not Found</Text>
+                  <Text style={styles.emptyMessage}>
+                    No faculty found with employee ID <Text style={{ fontWeight: "700" }}>{lastQueryEmpId}</Text>.
+                  </Text>
+                  <Text style={styles.emptyHint}>
+                    Verify your employee ID (e.g. FAC-001) or contact the examination cell administrator.
+                  </Text>
+                </Card>
+              </FadeIn>
+            ) : dutyResults.length === 0 ? (
+              <FadeIn delay={50}>
+                <Card style={styles.emptyCard}>
+                  <View style={[styles.emptyIconCircle, { backgroundColor: colors.pastelBlue }]}>
+                    <Ionicons name="calendar-clear-outline" size={32} color={colors.primary} />
+                  </View>
+                  <Text style={styles.emptyTitle}>No Upcoming Duties</Text>
+                  <Text style={styles.emptyMessage}>
+                    {facultyStatusMessage ||
+                      `No upcoming invigilation duties scheduled for ${facultyMeta?.name || lastQueryEmpId}.`}
+                  </Text>
+                  <Text style={styles.emptyHint}>
+                    Check back closer to examination dates or contact the exam coordinator for updates.
+                  </Text>
+                </Card>
+              </FadeIn>
+            ) : (
+              <FadeIn delay={50} style={{ gap: spacing.md }}>
+                <View style={styles.resultsHeaderRow}>
+                  <View>
+                    <Text style={styles.foundCountText}>
+                      {dutyResults.length} Upcoming Invigilation {dutyResults.length === 1 ? "Duty" : "Duties"}
+                    </Text>
+                    {facultyMeta?.name ? (
+                      <Text style={styles.candidateNameText}>
+                        Invigilator: <Text style={{ fontWeight: "700", color: colors.text }}>{facultyMeta.name}</Text>
+                        {facultyMeta.departmentCode ? ` • ${facultyMeta.departmentCode}` : ""}
+                      </Text>
+                    ) : null}
+                  </View>
+                  <View style={styles.usnBadgePill}>
+                    <Text style={styles.usnBadgeText}>{facultyMeta?.employeeId || lastQueryEmpId}</Text>
+                  </View>
+                </View>
+
+                {dutyResults.map((duty, idx) => (
+                  <Card key={duty.id || idx} style={styles.ticketCard}>
+                    <View style={styles.ticketHeader}>
+                      <View style={styles.ticketBadgeRow}>
+                        <View style={styles.examCodeBadge}>
+                          <Text style={styles.examCodeBadgeText}>
+                            {duty.subject_code || "EXAM"}
+                          </Text>
+                        </View>
+                        <View style={styles.dutyStatusPill}>
+                          <Text style={styles.dutyStatusText}>{duty.status || "ASSIGNED"}</Text>
+                        </View>
+                      </View>
+                      <Text style={styles.ticketExamTitle}>
+                        {duty.exam_name || "Examination Duty"}
+                      </Text>
+                    </View>
+
+                    <View style={styles.ticketDateTimeRow}>
+                      <View style={styles.ticketDateTimeItem}>
+                        <Ionicons name="calendar" size={14} color={colors.primary} />
+                        <View>
+                          <Text style={styles.dtMetaLabel}>DUTY DATE</Text>
+                          <Text style={styles.dtMetaValue}>{duty.duty_date}</Text>
+                        </View>
+                      </View>
+                      <View style={styles.ticketDtDivider} />
+                      <View style={styles.ticketDateTimeItem}>
+                        <Ionicons name="time" size={14} color={colors.accent} />
+                        <View>
+                          <Text style={styles.dtMetaLabel}>REPORTING TIME</Text>
+                          <Text style={styles.dtMetaValue}>
+                            {duty.start_time?.slice(0, 5)} - {duty.end_time?.slice(0, 5)}
+                          </Text>
+                        </View>
+                      </View>
+                    </View>
+
+                    <View style={styles.dutyHallBox}>
+                      <View style={styles.dutyHallIconCircle}>
+                        <Ionicons name="business" size={20} color={colors.primaryDark} />
+                      </View>
+                      <View style={{ flex: 1, gap: 2 }}>
+                        <Text style={styles.dutyHallLabel}>SUPERVISING HALL</Text>
+                        <Text style={styles.spotlightHallTitle}>{duty.hall_name || "TBA"}</Text>
+                        <Text style={styles.spotlightHallSub}>
+                          {duty.building || "Academic Complex"} • Floor {duty.floor ?? 1}
+                          {duty.hall_capacity ? ` • Capacity ${duty.hall_capacity}` : ""}
+                        </Text>
+                      </View>
+                    </View>
+                  </Card>
+                ))}
+              </FadeIn>
+            )}
+          </View>
+        )}
+
+        {/* State 5: Initial Idle Guide */}
+        {!activeSearched && !activeLoading && (
           <FadeIn delay={120}>
             <Card style={styles.guideCard}>
               <View style={styles.guideTitleRow}>
                 <Ionicons name="information-circle-outline" size={18} color={colors.primary} />
-                <Text style={styles.guideTitle}>Instant Seat Lookup Guide</Text>
+                <Text style={styles.guideTitle}>
+                  {isFacultyMode ? "Faculty Duty Lookup Guide" : "Instant Seat Lookup Guide"}
+                </Text>
               </View>
-              <Text style={styles.guideText}>
-                • Type your complete University Seat Number (USN), e.g. <Text style={{ fontWeight: "700" }}>1MS22CS001</Text>.
-              </Text>
-              <Text style={styles.guideText}>
-                • Instantly check your assigned examination hall, floor, building, and seat label.
-              </Text>
-              <Text style={styles.guideText}>
-                • No login credentials or student account required.
-              </Text>
-              <Text style={styles.guideText}>
-                • Seating allocations appear once officially published by the exam committee.
-              </Text>
+              {isFacultyMode ? (
+                <>
+                  <Text style={styles.guideText}>
+                    • Enter your Faculty Employee ID, e.g. <Text style={{ fontWeight: "700" }}>FAC-001</Text>.
+                  </Text>
+                  <Text style={styles.guideText}>
+                    • View all upcoming, active invigilation hall assignments and reporting times.
+                  </Text>
+                  <Text style={styles.guideText}>
+                    • No faculty login account or password is required.
+                  </Text>
+                </>
+              ) : (
+                <>
+                  <Text style={styles.guideText}>
+                    • Type your complete University Seat Number (USN), e.g. <Text style={{ fontWeight: "700" }}>1MS22CS001</Text>.
+                  </Text>
+                  <Text style={styles.guideText}>
+                    • Instantly check your assigned examination hall, floor, building, and seat label.
+                  </Text>
+                  <Text style={styles.guideText}>
+                    • No login credentials or student account required.
+                  </Text>
+                  <Text style={styles.guideText}>
+                    • Seating allocations appear once officially published by the exam committee.
+                  </Text>
+                </>
+              )}
             </Card>
           </FadeIn>
         )}
 
-        {/* Footer with Staff Login Link */}
+        {/* Footer with Admin Sign In Link */}
         <View style={styles.footerWrap}>
           <Text style={styles.footerBrand}>
             ExamEase Enterprise • Academic Year 2025–26
@@ -452,14 +762,14 @@ export default function FindSeatScreen({ navigation }) {
           </Text>
           {!user && (
             <Pressable
-              style={styles.footerStaffBtn}
-              onPress={goToStaffLogin}
+              style={styles.footerAdminBtn}
+              onPress={goToAdminLogin}
               hitSlop={8}
               accessibilityRole="button"
-              accessibilityLabel="Staff Sign In link in footer"
+              accessibilityLabel="Admin Sign In link in footer"
             >
-              <Text style={styles.footerStaffBtnText}>
-                Are you an administrator or faculty member? <Text style={styles.footerStaffBtnTextBold}>Staff sign in →</Text>
+              <Text style={styles.footerAdminBtnText}>
+                Examination administrator? <Text style={styles.footerAdminBtnTextBold}>Admin Sign In →</Text>
               </Text>
             </Pressable>
           )}
@@ -507,7 +817,7 @@ const styles = StyleSheet.create({
   brandSub: {
     ...textStyles.overline,
     color: colors.primaryDark,
-    fontSize: 9,
+    fontSize: 11,
     letterSpacing: 0.6,
   },
   headerRight: {
@@ -529,10 +839,10 @@ const styles = StyleSheet.create({
     ...textStyles.title,
     color: colors.text,
   },
-  staffLoginHeaderBtn: {
+  adminLoginHeaderBtn: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 4,
+    gap: 6,
     backgroundColor: colors.primaryLight,
     paddingVertical: 6,
     paddingHorizontal: 12,
@@ -541,7 +851,7 @@ const styles = StyleSheet.create({
     borderColor: colors.primaryMuted,
     ...(Platform.OS === "web" ? { cursor: "pointer" } : {}),
   },
-  staffLoginHeaderText: {
+  adminLoginHeaderText: {
     ...textStyles.caption,
     fontSize: 12,
     fontWeight: "700",
@@ -549,7 +859,7 @@ const styles = StyleSheet.create({
   },
   scroll: {
     padding: spacing.md,
-    paddingBottom: spacing["3xl"],
+    paddingBottom: spacing.xxxl,
     gap: spacing.lg,
   },
   scrollDesktop: {
@@ -576,7 +886,7 @@ const styles = StyleSheet.create({
   },
   heroPillText: {
     ...textStyles.overline,
-    fontSize: 10,
+    fontSize: 11,
     color: colors.primaryDark,
     letterSpacing: 0.8,
   },
@@ -595,7 +905,45 @@ const styles = StyleSheet.create({
   },
   searchCard: {
     padding: spacing.lg,
-    gap: spacing.xs,
+    gap: spacing.sm,
+  },
+  modeSwitchWrap: {
+    flexDirection: "row",
+    backgroundColor: colors.surfaceAlt,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: 4,
+    gap: 4,
+    marginBottom: spacing.xs,
+  },
+  modeTab: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    paddingVertical: 9,
+    paddingHorizontal: spacing.sm,
+    borderRadius: radii.sm,
+    ...transition("all", motion.fast),
+    ...(Platform.OS === "web" ? { cursor: "pointer" } : {}),
+  },
+  modeTabActive: {
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.primaryMuted,
+    ...shadows.subtle,
+  },
+  modeTabText: {
+    ...textStyles.label,
+    fontSize: 13,
+    fontWeight: "600",
+    color: colors.textSecondary,
+  },
+  modeTabTextActive: {
+    color: colors.primaryDark,
+    fontWeight: "700",
   },
   inputLabel: {
     ...textStyles.label,
@@ -636,7 +984,7 @@ const styles = StyleSheet.create({
     padding: 4,
   },
   findBtn: {
-    minWidth: 110,
+    minWidth: 120,
   },
   skeletonWrap: {
     gap: spacing.md,
@@ -713,6 +1061,7 @@ const styles = StyleSheet.create({
   },
   usnBadgeText: {
     ...textStyles.overline,
+    fontSize: 11,
     color: colors.primaryDark,
   },
   emptyCard: {
@@ -786,9 +1135,23 @@ const styles = StyleSheet.create({
   },
   publishedStatusText: {
     ...textStyles.overline,
-    fontSize: 9,
+    fontSize: 11,
     fontWeight: "700",
     color: colors.successText,
+  },
+  dutyStatusPill: {
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    backgroundColor: colors.pastelLavender,
+    borderRadius: radii.full,
+    borderWidth: 1,
+    borderColor: colors.primaryMuted,
+  },
+  dutyStatusText: {
+    ...textStyles.overline,
+    fontSize: 11,
+    fontWeight: "700",
+    color: colors.primaryDark,
   },
   ticketExamTitle: {
     ...textStyles.title,
@@ -823,7 +1186,7 @@ const styles = StyleSheet.create({
   },
   dtMetaLabel: {
     ...textStyles.overline,
-    fontSize: 9,
+    fontSize: 11,
     color: colors.textMuted,
     letterSpacing: 0.6,
   },
@@ -850,7 +1213,7 @@ const styles = StyleSheet.create({
   },
   spotlightLabel: {
     ...textStyles.overline,
-    fontSize: 9,
+    fontSize: 11,
     color: colors.successText,
     letterSpacing: 0.8,
   },
@@ -898,6 +1261,32 @@ const styles = StyleSheet.create({
     color: colors.successText,
     fontWeight: "600",
   },
+  dutyHallBox: {
+    flexDirection: "row",
+    backgroundColor: colors.pastelBlue,
+    borderRadius: radii.lg,
+    borderWidth: 1,
+    borderColor: colors.primaryMuted,
+    padding: spacing.md,
+    alignItems: "center",
+    gap: spacing.md,
+  },
+  dutyHallIconCircle: {
+    width: 42,
+    height: 42,
+    borderRadius: radii.md,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.primaryMuted,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  dutyHallLabel: {
+    ...textStyles.overline,
+    fontSize: 11,
+    color: colors.primaryDark,
+    letterSpacing: 0.8,
+  },
   guideCard: {
     padding: spacing.lg,
     backgroundColor: colors.surfaceAlt,
@@ -936,18 +1325,18 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: colors.textMuted,
   },
-  footerStaffBtn: {
+  footerAdminBtn: {
     marginTop: spacing.sm,
     paddingVertical: 6,
     paddingHorizontal: 12,
     ...(Platform.OS === "web" ? { cursor: "pointer" } : {}),
   },
-  footerStaffBtnText: {
+  footerAdminBtnText: {
     ...textStyles.caption,
     color: colors.textSecondary,
     fontSize: 12,
   },
-  footerStaffBtnTextBold: {
+  footerAdminBtnTextBold: {
     fontWeight: "700",
     color: colors.primary,
   },

@@ -30,19 +30,34 @@ export default function StudentProfileScreen({ navigation }) {
     confirmSignOut(logout);
   };
 
-  const displayName = user?.full_name || user?.username || "ExamEase User";
+  const displayName =
+    user?.student_profile?.full_name ||
+    user?.faculty_profile?.full_name ||
+    user?.full_name ||
+    user?.username ||
+    "ExamEase User";
   const displayUsername = user?.username || "N/A";
-  const displayEmail = user?.email || "N/A";
-  const displayPhone = user?.phone || user?.student_profile?.phone || "N/A";
+  const displayEmail =
+    user?.student_profile?.email ||
+    user?.faculty_profile?.email ||
+    user?.email ||
+    "N/A";
+  const displayPhone =
+    user?.phone ||
+    user?.student_profile?.phone ||
+    user?.faculty_profile?.phone ||
+    "N/A";
 
   const departmentName =
+    user?.student_profile?.department_code ||
     user?.student_profile?.department_name ||
+    user?.faculty_profile?.department_code ||
     user?.faculty_profile?.department_name ||
     (isAdmin ? "Examination Management Cell" : "Engineering");
 
   const identifier =
     user?.student_profile?.usn ||
-    user?.faculty_profile?.faculty_id ||
+    user?.faculty_profile?.employee_id ||
     (isAdmin ? "SYSTEM-ADMIN" : displayUsername);
 
   const semester = user?.student_profile?.semester;

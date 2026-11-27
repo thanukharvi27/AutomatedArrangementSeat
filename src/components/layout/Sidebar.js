@@ -186,7 +186,7 @@ export const Sidebar = ({
           {!collapsed && (
             <View style={styles.userInfo}>
               <Text style={styles.userName} numberOfLines={1}>
-                {user?.full_name || user?.username}
+                {user?.student_profile?.full_name || user?.faculty_profile?.full_name || user?.full_name || user?.username}
               </Text>
               <Text style={styles.userRole}>{role}</Text>
             </View>

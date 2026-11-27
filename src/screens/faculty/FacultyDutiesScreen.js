@@ -27,16 +27,20 @@ export default function FacultyDutiesScreen({ navigation }) {
   const [facultyInfo, setFacultyInfo] = useState(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState(null);
 
   const fetchDuties = async () => {
     try {
+      setError(null);
       const res = await api.get("/faculty/me/duties");
-      if (res.data?.success) {
-        setDuties(res.data.duties || []);
-        setFacultyInfo(res.data.faculty);
+      const data = res?.data || res;
+      if (data?.success) {
+        setDuties(data.duties || []);
+        setFacultyInfo(data.faculty);
       }
     } catch (err) {
       console.log("Error loading duties:", err?.message);
+      setError(err?.message || "Failed to load invigilation assignments.");
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -87,6 +91,24 @@ export default function FacultyDutiesScreen({ navigation }) {
           <RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); fetchDuties(); }} />
         }
       >
+        {error && !loading && (
+          <View style={{ marginBottom: 16, padding: 14, backgroundColor: "#FEE2E2", borderColor: "#EF4444", borderWidth: 1, borderRadius: 8, flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+            <View style={{ flex: 1, marginRight: 10 }}>
+              <Text style={{ color: "#991B1B", fontWeight: "600", fontSize: 13 }}>Failed to load duties</Text>
+              <Text style={{ color: "#991B1B", fontSize: 12, marginTop: 2 }}>{error}</Text>
+            </View>
+            <Pressable
+              onPress={() => {
+                setLoading(true);
+                fetchDuties();
+              }}
+              style={{ backgroundColor: "#FFFFFF", paddingHorizontal: 12, paddingVertical: 6, borderRadius: 6, borderWidth: 1, borderColor: "#EF4444" }}
+            >
+              <Text style={{ color: "#991B1B", fontWeight: "600", fontSize: 12 }}>Retry</Text>
+            </Pressable>
+          </View>
+        )}
+
         {/* Profile Card */}
         <View style={styles.profileCard}>
           <View style={styles.avatarRing}>

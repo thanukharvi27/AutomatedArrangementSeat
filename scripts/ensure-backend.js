@@ -122,7 +122,7 @@ async function ensureBackend() {
 
   console.log(`\x1b[33m⚡ [ExamEase] Flask Backend is offline. Starting automatically...\x1b[0m`);
 
-  const backendDir = path.resolve(__dirname, '..', '..', 'backend');
+  const backendDir = path.resolve(__dirname, '..', 'backend');
   const runPyPath = path.join(backendDir, 'run.py');
 
   if (!fs.existsSync(runPyPath)) {

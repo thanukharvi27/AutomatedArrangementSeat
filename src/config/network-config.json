@@ -4,5 +4,5 @@
   "apiBaseUrl": "http://172.17.1.78:5000/api",
   "localhostUrl": "http://localhost:5000/api",
   "emulatorUrl": "http://10.0.2.2:5000/api",
-  "updatedAt": "2026-11-27T05:02:19.902Z"
+  "updatedAt": "2026-11-27T08:27:32.996Z"
 }

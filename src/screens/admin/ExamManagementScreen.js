@@ -192,7 +192,7 @@ export default function ExamManagementScreen({ navigation }) {
 
     // Tab filter
     if (activeTab === "UPCOMING") {
-      return (e.exam_date || "") >= todayStr || e.status === "SCHEDULED";
+      return (e.exam_date || "") >= todayStr;
     }
     if (activeTab === "PAST") {
       return (e.exam_date || "") < todayStr && e.status !== "SCHEDULED";
@@ -444,7 +444,8 @@ export default function ExamManagementScreen({ navigation }) {
               onChange={setEditStatus}
               options={[
                 { value: "SCHEDULED", label: "SCHEDULED" },
-                { value: "IN_PROGRESS", label: "IN PROGRESS" },
+                { value: "SEATING_DRAFT", label: "SEATING DRAFT" },
+                { value: "SEATING_PUBLISHED", label: "SEATING PUBLISHED" },
                 { value: "COMPLETED", label: "COMPLETED" },
                 { value: "CANCELLED", label: "CANCELLED" },
               ]}

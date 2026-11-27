@@ -46,16 +46,34 @@ export default function HallManagementScreen() {
   const [seatsPerBench, setSeatsPerBench] = useState("2");
   const [notes, setNotes] = useState("");
 
+  const [occupancyMap, setOccupancyMap] = useState({});
+
   const numBenches = parseInt(benches, 10) || 0;
   const numSeatsPerBench = parseInt(seatsPerBench, 10) || 0;
   const calculatedCapacity = numBenches * numSeatsPerBench;
 
   const loadHalls = async () => {
     try {
-      const res = await hallApi.getAll();
-      const data = res.data || res;
-      if (data.success) {
-        setHalls(data.halls || []);
+      const [res, occRes] = await Promise.allSettled([
+        hallApi.getAll(),
+        reportApi.getOccupancy(),
+      ]);
+
+      if (res.status === "fulfilled") {
+        const data = res.value.data || res.value;
+        if (data.success) {
+          setHalls(data.halls || []);
+        }
+      }
+
+      if (occRes.status === "fulfilled") {
+        const occData = occRes.value.data || occRes.value;
+        const list = occData.occupancy || [];
+        const map = {};
+        list.forEach((item) => {
+          map[item.hall_id] = item.occupied_seats ?? 0;
+        });
+        setOccupancyMap(map);
       }
     } catch (err) {
       console.log("Error loading halls:", err?.message);
@@ -193,7 +211,7 @@ export default function HallManagementScreen() {
         ) : (
           <View style={styles.grid}>
             {halls.map((hall) => {
-              const allocated = hall.allocated_count || 0;
+              const allocated = occupancyMap[hall.id] ?? hall.allocated_count ?? 0;
               const cap = hall.capacity || 1;
               const pct = Math.min(100, Math.round((allocated / cap) * 100));
 

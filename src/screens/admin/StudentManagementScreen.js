@@ -56,7 +56,7 @@ export default function StudentManagementScreen({ navigation }) {
   const [editingStudent, setEditingStudent] = useState(null);
   const [submitting, setSubmitting] = useState(false);
 
-  const { showToast } = useFeedback();
+  const { toast } = useFeedback();
 
   // Form states
   const [formUsn, setFormUsn] = useState("");
@@ -230,7 +230,13 @@ export default function StudentManagementScreen({ navigation }) {
           if (data.success) {
             showAlert("Deleted", `Student ${stu.full_name} has been removed.`);
             if (detailStudent?.id === stu.id) setDetailStudent(null);
-            fetchStudents();
+            const newTotal = totalStudents - 1;
+            const newPages = Math.max(1, Math.ceil(newTotal / perPage));
+            if (page > newPages) {
+              setPage(newPages);
+            } else {
+              fetchStudents();
+            }
           } else {
             showAlert("Delete Error", data.error || "Could not delete student.");
           }
@@ -636,11 +642,7 @@ export default function StudentManagementScreen({ navigation }) {
           visible={showImportModal}
           onClose={() => setShowImportModal(false)}
           onImported={(count) => {
-            showToast({
-              type: "success",
-              title: "Import Complete",
-              message: `Successfully imported ${count} student${count !== 1 ? "s" : ""} from CSV.`,
-            });
+            toast(`Successfully imported ${count} student${count !== 1 ? "s" : ""} from CSV.`, "success");
             fetchStudents();
           }}
         />

@@ -15,7 +15,7 @@ import { Button } from "../../components/common/Button";
 import { Meter } from "../../components/common/Charts";
 import { LoadingSkeleton } from "../../components/common/LoadingSkeleton";
 import { colors, radii, textStyles, shadows } from "../../theme/tokens";
-import { showAlert } from "../../utils/alerts";
+import { showAlert, confirmAction } from "../../utils/alerts";
 import api, { examApi, hallApi, seatingApi } from "../../services/api";
 
 export default function SeatingGeneratorScreen({ navigation }) {
@@ -57,7 +57,10 @@ export default function SeatingGeneratorScreen({ navigation }) {
         const hdata = hallsRes.value.data || hallsRes.value;
         const loadedHalls = hdata.halls || [];
         setHalls(loadedHalls);
-        setSelectedHallIds(loadedHalls.map((h) => h.id));
+        setSelectedHallIds((prev) => {
+          if (prev && prev.length > 0) return prev;
+          return loadedHalls.filter((h) => h.status === "ACTIVE").map((h) => h.id);
+        });
       }
 
       if (plansRes.status === "fulfilled") {
@@ -89,7 +92,7 @@ export default function SeatingGeneratorScreen({ navigation }) {
         setSelectedExamRegCount(data.registrations?.length || 0);
       }
     } catch {
-      setSelectedExamRegCount(exam.registered_count || 0);
+      setSelectedExamRegCount(exam.registered_students_count ?? exam.registered_count ?? 0);
     }
   };
 
@@ -111,23 +114,14 @@ export default function SeatingGeneratorScreen({ navigation }) {
   const hasEnoughSeats = totalCapacity >= selectedExamRegCount;
   const occupancyPct = totalCapacity > 0 ? Math.min(100, Math.round((selectedExamRegCount / totalCapacity) * 100)) : 0;
 
-  const handleGenerate = async () => {
-    if (!selectedExamId) {
-      showAlert("Missing Selection", "Please select an examination in Step 1.");
-      return;
-    }
-    if (selectedHallIds.length === 0) {
-      showAlert("Missing Selection", "Please select at least one examination hall in Step 3.");
-      return;
-    }
-
+  const executeGenerate = async (force = false) => {
     setGenerating(true);
     try {
       const payload = {
         exam_id: selectedExamId,
         hall_ids: selectedHallIds,
         policy: selectedStrategy, // INTERLEAVE or CONSECUTIVE
-        force: true,
+        force,
       };
 
       const res = await seatingApi.generate(payload);
@@ -146,10 +140,33 @@ export default function SeatingGeneratorScreen({ navigation }) {
         showAlert("Allocation Note", data.error || "Could not generate seating plan.");
       }
     } catch (err) {
-      showAlert("Generation Failed", err.response?.data?.error || err.message || "Allocation failed.");
+      const errMsg = err.response?.data?.error || err.message || "";
+      if (errMsg.toLowerCase().includes("published") && !force) {
+        confirmAction({
+          title: "Overwrite Published Plan?",
+          message: "A published seating plan already exists for this exam. Do you want to overwrite it?",
+          confirmText: "Overwrite",
+          destructive: true,
+          onConfirm: () => executeGenerate(true),
+        });
+      } else {
+        showAlert("Generation Failed", errMsg || "Allocation failed.");
+      }
     } finally {
       setGenerating(false);
     }
+  };
+
+  const handleGenerate = () => {
+    if (!selectedExamId) {
+      showAlert("Missing Selection", "Please select an examination in Step 1.");
+      return;
+    }
+    if (selectedHallIds.length === 0) {
+      showAlert("Missing Selection", "Please select at least one examination hall in Step 3.");
+      return;
+    }
+    executeGenerate(false);
   };
 
   const STEPS = [

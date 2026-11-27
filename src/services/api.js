@@ -68,7 +68,57 @@ const api = axios.create({
 });
 
 const TOKEN_KEY = "examease_auth_token";
+const URL_KEY = "examease_api_url";
 let inMemoryToken = null;
+
+let onUnauthorizedCallback = null;
+export const setOnUnauthorizedCallback = (cb) => {
+  onUnauthorizedCallback = cb;
+};
+
+export const urlStorage = {
+  getUrl: async () => {
+    try {
+      if (Platform.OS === "web") {
+        if (typeof localStorage !== "undefined") {
+          return localStorage.getItem(URL_KEY);
+        }
+        return null;
+      }
+      return await SecureStore.getItemAsync(URL_KEY);
+    } catch {
+      return null;
+    }
+  },
+  saveUrl: async (url) => {
+    try {
+      if (Platform.OS === "web") {
+        if (typeof localStorage !== "undefined" && url) {
+          localStorage.setItem(URL_KEY, String(url));
+        }
+        return;
+      }
+      if (url) {
+        await SecureStore.setItemAsync(URL_KEY, String(url));
+      }
+    } catch (e) {
+      console.warn("URL storage save error:", e);
+    }
+  },
+  removeUrl: async () => {
+    try {
+      if (Platform.OS === "web") {
+        if (typeof localStorage !== "undefined") {
+          localStorage.removeItem(URL_KEY);
+        }
+        return;
+      }
+      await SecureStore.deleteItemAsync(URL_KEY);
+    } catch (e) {
+      console.warn("URL storage remove error:", e);
+    }
+  },
+};
 
 export const tokenStorage = {
   getToken: async () => {
@@ -136,13 +186,19 @@ api.interceptors.request.use(
 
 api.interceptors.response.use(
   (response) => {
-    const data = response.data;
-    if (data && typeof data === "object" && data.data === undefined) {
-      data.data = data;
-    }
-    return data;
+    return response.data;
   },
-  (error) => {
+  async (error) => {
+    const status = error.response?.status;
+    const url = error.config?.url || "";
+
+    if (status === 401 && !url.includes("/auth/login")) {
+      await tokenStorage.removeToken();
+      if (onUnauthorizedCallback) {
+        onUnauthorizedCallback();
+      }
+    }
+
     let message =
       error.response?.data?.error ||
       error.response?.data?.message;
@@ -158,7 +214,10 @@ api.interceptors.response.use(
         message = error.message || "An unexpected error occurred.";
       }
     }
-    return Promise.reject(new Error(message));
+    const err = new Error(message);
+    err.status = error.response?.status;
+    err.response = error.response;
+    return Promise.reject(err);
   }
 );
 
@@ -194,7 +253,6 @@ export const studentApi = {
   create: (data) => api.post("/students", data),
   update: (id, data) => api.patch(`/students/${id}`, data),
   delete: (id) => api.delete(`/students/${id}`),
-  bulkCreate: (data) => api.post("/students/bulk", data),
   importCsv: (data) => api.post("/students/import", data),
 };
 
@@ -241,6 +299,8 @@ export const facultyApi = {
   assignDuty: (payload) => api.post("/faculty/invigilation", payload),
   cancelDuty: (id) => api.delete(`/faculty/invigilation/${id}`),
   getMyDuties: () => api.get("/faculty/me/duties"),
+  publicFindDuties: (employeeId) =>
+    api.get("/faculty/find-duties", { params: { employee_id: employeeId } }),
 };
 
 export const reportApi = {

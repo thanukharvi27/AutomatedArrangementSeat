@@ -7,7 +7,6 @@ import { Ionicons } from "@expo/vector-icons";
 import { AuthContext } from "../context/AuthContext";
 import { colors, textStyles } from "../theme/tokens";
 
-import SplashScreen from "../screens/auth/SplashScreen";
 import LoginScreen from "../screens/auth/LoginScreen";
 
 import StudentHomeScreen from "../screens/student/StudentHomeScreen";
@@ -27,6 +26,7 @@ import ReportsScreen from "../screens/admin/ReportsScreen";
 import SettingsScreen from "../screens/admin/SettingsScreen";
 
 import FacultyDutiesScreen from "../screens/faculty/FacultyDutiesScreen";
+import AdminFacultyDutiesScreen from "../screens/admin/FacultyDutiesScreen";
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -126,13 +126,17 @@ export const AppNavigator = () => {
   }
 
   return (
-    <NavigationContainer>
-      <Stack.Navigator screenOptions={{ headerShown: false }} initialRouteName="PublicFindSeat">
+    // Reset navigation history on every auth change so login lands on the correct home screen
+    <NavigationContainer key={user ? (user.role || "user") : "guest"}>
+      <Stack.Navigator
+        screenOptions={{ headerShown: false }}
+        /* Guests start on PublicFindSeat; logged-in users start on their first screen (AdminRoot, etc.) */
+        initialRouteName={!user ? "PublicFindSeat" : undefined}
+      >
         {!user ? (
           <>
             <Stack.Screen name="PublicFindSeat" component={FindSeatScreen} />
             <Stack.Screen name="Login" component={LoginScreen} />
-            <Stack.Screen name="Splash" component={FindSeatScreen} />
           </>
         ) : (user.role || "").toUpperCase() === "ADMIN" ? (
           <>
@@ -145,7 +149,7 @@ export const AppNavigator = () => {
             <Stack.Screen name="HallManagement" component={HallManagementScreen} />
             <Stack.Screen name="SeatingPlans" component={SeatingGeneratorScreen} />
             <Stack.Screen name="SeatingPlanDetail" component={SeatingPlanDetailScreen} />
-            <Stack.Screen name="FacultyDuties" component={FacultyDutiesScreen} />
+            <Stack.Screen name="FacultyDuties" component={AdminFacultyDutiesScreen} />
             <Stack.Screen name="AdminReports" component={ReportsScreen} />
             <Stack.Screen name="Settings" component={SettingsScreen} />
             <Stack.Screen name="AdminProfile" component={StudentProfileScreen} />

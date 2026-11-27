@@ -115,7 +115,9 @@ export default function ReportsScreen() {
         const pageList = d.students || [];
         allStudents = allStudents.concat(pageList);
 
-        if (d.pagination) {
+        if (d.pages) {
+          totalPages = d.pages;
+        } else if (d.pagination) {
           totalPages = d.pagination.pages || 1;
         } else {
           break;
@@ -161,7 +163,7 @@ export default function ReportsScreen() {
       const latestPlanId = plans[0].id;
       const planRes = await seatingApi.getPlan(latestPlanId);
       const detail = planRes.data || planRes;
-      const allocs = detail.plan?.allocations || [];
+      const allocs = (detail.halls || []).flatMap((h) => h.allocations || []);
 
       const headers = ["Plan ID", "Exam Name", "Date", "USN", "Candidate Name", "Hall", "Seat Label"];
       const rows = allocs.map((a) => [

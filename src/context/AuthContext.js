@@ -1,5 +1,12 @@
 import React, { createContext, useState, useEffect, useContext } from "react";
-import { authApi, tokenStorage, getApiBaseUrl, setApiBaseUrl } from "../services/api";
+import {
+  authApi,
+  tokenStorage,
+  urlStorage,
+  getApiBaseUrl,
+  setApiBaseUrl,
+  setOnUnauthorizedCallback,
+} from "../services/api";
 
 export const AuthContext = createContext(null);
 
@@ -10,12 +17,21 @@ export const AuthProvider = ({ children }) => {
   const [apiUrl, setApiUrlState] = useState(getApiBaseUrl());
 
   useEffect(() => {
+    setOnUnauthorizedCallback(() => {
+      setToken(null);
+      setUser(null);
+    });
     restoreSession();
   }, []);
 
   const restoreSession = async () => {
     try {
       setLoading(true);
+      const savedUrl = await urlStorage.getUrl();
+      if (savedUrl) {
+        setApiBaseUrl(savedUrl);
+        setApiUrlState(savedUrl);
+      }
       const savedToken = await tokenStorage.getToken();
       if (savedToken) {
         setToken(savedToken);
@@ -28,10 +44,13 @@ export const AuthProvider = ({ children }) => {
             setToken(null);
             setUser(null);
           }
-        } catch {
-          await tokenStorage.removeToken();
-          setToken(null);
-          setUser(null);
+        } catch (err) {
+          const status = err.status || err.response?.status;
+          if (status === 401 || status === 404) {
+            await tokenStorage.removeToken();
+            setToken(null);
+            setUser(null);
+          }
         }
       }
     } catch {
@@ -73,20 +92,20 @@ export const AuthProvider = ({ children }) => {
 
   const logout = async () => {
     try {
-      await tokenStorage.removeToken();
+      await authApi.logout();
     } catch (e) {
-      console.warn("Failed to clear local token:", e);
+      console.warn("Server logout error:", e);
+    } finally {
+      await tokenStorage.removeToken();
+      setToken(null);
+      setUser(null);
     }
-    setToken(null);
-    setUser(null);
-    try {
-      authApi.logout().catch(() => {});
-    } catch {}
   };
 
-  const updateApiUrl = (newUrl) => {
+  const updateApiUrl = async (newUrl) => {
     setApiBaseUrl(newUrl);
     setApiUrlState(getApiBaseUrl());
+    await urlStorage.saveUrl(getApiBaseUrl());
   };
 
   return (

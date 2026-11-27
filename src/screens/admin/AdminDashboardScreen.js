@@ -212,7 +212,7 @@ export default function AdminDashboardScreen({ navigation }) {
           <KpiCard
             label="Exam Halls"
             value={stats.total_halls}
-            sublabel={`${stats.total_seats} capacity`}
+            sublabel={`${stats.total_available_seats ?? stats.total_seats ?? 0} capacity`}
             icon={<Ionicons name="easel-outline" size={20} color={colors.warningText} />}
             tone="yellow"
             delay={160}
@@ -220,7 +220,7 @@ export default function AdminDashboardScreen({ navigation }) {
           />
           <KpiCard
             label="Allocated Seats"
-            value={stats.allocated_seats}
+            value={stats.total_allocated_seats ?? stats.allocated_seats ?? 0}
             sublabel={`${stats.published_plans} plans published`}
             icon={<Ionicons name="layers-outline" size={20} color={colors.primaryDark} />}
             tone="blue"
@@ -266,8 +266,8 @@ export default function AdminDashboardScreen({ navigation }) {
 
             <StackedBar
               segments={[
-                { label: "Allocated", value: stats.allocated_seats || 36, color: colors.primary },
-                { label: "Available", value: Math.max(0, (stats.total_seats || 126) - (stats.allocated_seats || 36)), color: colors.success },
+                { label: "Allocated", value: stats.total_allocated_seats || 0, color: colors.primary },
+                { label: "Available", value: stats.total_available_seats || 0, color: colors.success },
               ]}
               height={16}
               style={{ marginVertical: 14 }}

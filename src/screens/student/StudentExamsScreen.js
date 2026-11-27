@@ -33,12 +33,14 @@ export default function StudentExamsScreen({ navigation }) {
   const [exams, setExams] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState(null);
   const [selectedTab, setSelectedTab] = useState("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [ticketModalExam, setTicketModalExam] = useState(null);
 
   const fetchExams = useCallback(async () => {
     try {
+      setError(null);
       const res = await api.get("/student/exams");
       const data = res.data || res;
       if (data.success) {
@@ -46,6 +48,7 @@ export default function StudentExamsScreen({ navigation }) {
       }
     } catch (err) {
       console.log("Error loading student exams:", err?.message);
+      setError(err?.message || "Failed to load examination schedule.");
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -56,7 +59,8 @@ export default function StudentExamsScreen({ navigation }) {
     fetchExams();
   }, [fetchExams]);
 
-  const todayStr = new Date().toISOString().split("T")[0];
+  const now = new Date();
+  const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
 
   const filteredExams = exams.filter((exam) => {
     // Tab filter
@@ -105,11 +109,31 @@ export default function StudentExamsScreen({ navigation }) {
         </View>
 
         <Tabs
-          items={TAB_ITEMS}
+          tabs={TAB_ITEMS}
           activeKey={selectedTab}
           onChange={setSelectedTab}
           style={{ marginBottom: spacing.md }}
         />
+
+        {error && !loading && (
+          <Card style={{ marginBottom: 16, backgroundColor: colors.dangerLight, borderColor: colors.dangerBorder }}>
+            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+              <View style={{ flex: 1 }}>
+                <Text style={{ color: colors.dangerText, fontWeight: "600", fontSize: 13 }}>Failed to load examinations</Text>
+                <Text style={{ color: colors.dangerText, fontSize: 12, marginTop: 2 }}>{error}</Text>
+              </View>
+              <Button
+                title="Retry"
+                size="sm"
+                variant="secondary"
+                onPress={() => {
+                  setLoading(true);
+                  fetchExams();
+                }}
+              />
+            </View>
+          </Card>
+        )}
 
         {loading ? (
           <View style={{ gap: spacing.md }}>
