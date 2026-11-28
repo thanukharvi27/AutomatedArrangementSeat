@@ -5,10 +5,12 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 import { AuthProvider } from "./src/context/AuthContext";
 import { FeedbackProvider } from "./src/components/common/Feedback";
 import { AppNavigator } from "./src/navigation/AppNavigator";
+import { injectGlobalWebStyles } from "./src/theme/webStyles";
 
 export default function App() {
   useEffect(() => {
     if (Platform.OS === "web" && typeof document !== "undefined") {
+      injectGlobalWebStyles();
       const linkId = "google-fonts-inter";
       if (!document.getElementById(linkId)) {
         const link = document.createElement("link");

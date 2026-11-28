@@ -24,6 +24,7 @@ import {
 } from "../../services/api";
 import { showAlert } from "../../utils/alerts";
 import { Button } from "../../components/common/Button";
+import { Input, getWebInputPropsStyle, getContainerFocusStyle } from "../../components/common/Input";
 import { FadeIn, Touchable } from "../../components/common/Motion";
 
 export default function LoginScreen({ navigation }) {
@@ -34,6 +35,7 @@ export default function LoginScreen({ navigation }) {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+  const [focusedField, setFocusedField] = useState(null);
   const [submitting, setSubmitting] = useState(false);
   const [activeDemo, setActiveDemo] = useState(null);
   const [errorMessage, setErrorMessage] = useState("");
@@ -293,10 +295,21 @@ export default function LoginScreen({ navigation }) {
               <View style={styles.form}>
                 <View style={styles.inputGroup}>
                   <Text style={styles.label}>Admin Sign In Username</Text>
-                  <View style={styles.inputWrapper}>
-                    <Ionicons name="person-outline" size={16} color={colors.textMuted} style={styles.inputIcon} />
+                  <View
+                    style={[
+                      styles.inputWrapper,
+                      transition("all", motion.fast),
+                      focusedField === "username" && getContainerFocusStyle(),
+                    ]}
+                  >
+                    <Ionicons
+                      name="person-outline"
+                      size={16}
+                      color={focusedField === "username" ? colors.primary : colors.textMuted}
+                      style={styles.inputIcon}
+                    />
                     <TextInput
-                      style={styles.input}
+                      style={[styles.input, getWebInputPropsStyle(colors.surfaceAlt)]}
                       placeholder="e.g. admin"
                       placeholderTextColor={colors.textMuted}
                       value={username}
@@ -305,8 +318,11 @@ export default function LoginScreen({ navigation }) {
                         setActiveDemo(null);
                         if (errorMessage) setErrorMessage("");
                       }}
+                      onFocus={() => setFocusedField("username")}
+                      onBlur={() => setFocusedField((prev) => (prev === "username" ? null : prev))}
                       autoCapitalize="none"
                       autoCorrect={false}
+                      autoComplete="username"
                       returnKeyType="next"
                       accessibilityLabel="Admin Sign In Username"
                     />
@@ -315,10 +331,21 @@ export default function LoginScreen({ navigation }) {
 
                 <View style={styles.inputGroup}>
                   <Text style={styles.label}>Password</Text>
-                  <View style={styles.inputWrapper}>
-                    <Ionicons name="lock-closed-outline" size={16} color={colors.textMuted} style={styles.inputIcon} />
+                  <View
+                    style={[
+                      styles.inputWrapper,
+                      transition("all", motion.fast),
+                      focusedField === "password" && getContainerFocusStyle(),
+                    ]}
+                  >
+                    <Ionicons
+                      name="lock-closed-outline"
+                      size={16}
+                      color={focusedField === "password" ? colors.primary : colors.textMuted}
+                      style={styles.inputIcon}
+                    />
                     <TextInput
-                      style={styles.input}
+                      style={[styles.input, getWebInputPropsStyle(colors.surfaceAlt)]}
                       placeholder="Enter your password"
                       placeholderTextColor={colors.textMuted}
                       value={password}
@@ -327,8 +354,11 @@ export default function LoginScreen({ navigation }) {
                         setActiveDemo(null);
                         if (errorMessage) setErrorMessage("");
                       }}
+                      onFocus={() => setFocusedField("password")}
+                      onBlur={() => setFocusedField((prev) => (prev === "password" ? null : prev))}
                       secureTextEntry={!showPassword}
                       autoCapitalize="none"
+                      autoComplete="current-password"
                       returnKeyType="done"
                       onSubmitEditing={handleLogin}
                       accessibilityLabel="Admin Sign In Password"
@@ -435,13 +465,12 @@ export default function LoginScreen({ navigation }) {
                   {showServerConfig && (
                     <View style={styles.serverDrawer}>
                       <Text style={styles.drawerTitle}>Backend API Host Configuration</Text>
-                      <TextInput
-                        style={styles.serverInput}
+                      <Input
                         value={serverUrl}
                         onChangeText={setServerUrl}
                         placeholder="http://localhost:5000/api"
-                        placeholderTextColor={colors.textMuted}
                         autoCapitalize="none"
+                        style={{ marginBottom: spacing.sm }}
                       />
 
                       <Text style={styles.drawerSub}>Quick Presets:</Text>
@@ -757,18 +786,29 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     paddingHorizontal: spacing.md,
     height: 44,
+    overflow: "hidden",
   },
   inputIcon: {
     marginRight: spacing.sm,
   },
   input: {
     flex: 1,
+    minWidth: 0,
     ...textStyles.body,
     color: colors.text,
     height: "100%",
+    backgroundColor: "transparent",
+    borderWidth: 0,
+    outlineStyle: "none",
   },
   eyeBtn: {
     padding: spacing.xs,
+    marginLeft: spacing.xs,
+    backgroundColor: "transparent",
+    borderRadius: radii.sm,
+    justifyContent: "center",
+    alignItems: "center",
+    ...(Platform.OS === "web" ? { cursor: "pointer" } : {}),
   },
   demoSection: {
     marginTop: spacing.md,
@@ -889,18 +929,6 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     color: colors.text,
     marginBottom: spacing.xs,
-  },
-  serverInput: {
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radii.md,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 6,
-    ...textStyles.body,
-    fontSize: 13,
-    color: colors.text,
-    marginBottom: spacing.sm,
   },
   drawerSub: {
     ...textStyles.caption,

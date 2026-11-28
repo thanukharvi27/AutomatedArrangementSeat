@@ -16,11 +16,31 @@ import { Ionicons } from "@expo/vector-icons";
 import { colors } from "../../theme/colors";
 import { ResponsiveLayout } from "../../components/ResponsiveLayout";
 import { LoadingSpinner } from "../../components/LoadingSpinner";
+import { getWebInputPropsStyle, getContainerFocusStyle } from "../../components/common/Input";
 import { showAlert, confirmAction } from "../../utils/alerts";
 import { facultyApi, departmentApi, examApi, hallApi } from "../../services/api";
 
+const FacultyFieldInput = ({ style, ...props }) => {
+  const [focused, setFocused] = useState(false);
+  return (
+    <View style={[styles.inputWrapper, focused && getContainerFocusStyle(), style]}>
+      <TextInput
+        style={[
+          styles.input,
+          getWebInputPropsStyle("#f8fafc", "#0f172a", "#94a3b8"),
+        ]}
+        placeholderTextColor="#94a3b8"
+        onFocus={() => setFocused(true)}
+        onBlur={() => setFocused(false)}
+        {...props}
+      />
+    </View>
+  );
+};
+
 export default function FacultyManagementScreen({ navigation }) {
   const [activeTab, setActiveTab] = useState("roster"); // 'roster' | 'duties'
+  const [searchFocused, setSearchFocused] = useState(false);
   const [faculty, setFaculty] = useState([]);
   const [duties, setDuties] = useState([]);
   const [departments, setDepartments] = useState([]);
@@ -368,14 +388,24 @@ export default function FacultyManagementScreen({ navigation }) {
         <View style={{ flex: 1 }}>
           {/* Search & Actions Bar */}
           <View style={styles.toolbar}>
-            <View style={styles.searchBar}>
-              <Ionicons name="search" size={16} color="#64748b" style={{ marginRight: 6 }} />
+            <View style={[styles.searchBar, searchFocused && getContainerFocusStyle()]}>
+              <Ionicons
+                name="search"
+                size={16}
+                color={searchFocused ? colors.primary : colors.textMuted}
+                style={{ marginRight: 6 }}
+              />
               <TextInput
-                style={styles.searchInput}
+                style={[
+                  styles.searchInput,
+                  getWebInputPropsStyle("#ffffff", "#0f172a", "#94a3b8"),
+                ]}
                 placeholder="Search by name, ID (FAC-001), dept..."
                 placeholderTextColor="#94a3b8"
                 value={searchQuery}
                 onChangeText={setSearchQuery}
+                onFocus={() => setSearchFocused(true)}
+                onBlur={() => setSearchFocused(false)}
               />
               {searchQuery ? (
                 <Pressable onPress={() => setSearchQuery("")} hitSlop={8}>
@@ -657,44 +687,36 @@ export default function FacultyManagementScreen({ navigation }) {
             <ScrollView contentContainerStyle={styles.modalScroll} showsVerticalScrollIndicator={false}>
               {/* Faculty ID */}
               <Text style={styles.inputLabel}>Faculty ID *</Text>
-              <TextInput
-                style={styles.input}
+              <FacultyFieldInput
                 value={newEmpId}
                 onChangeText={setNewEmpId}
                 placeholder="e.g. FAC-006"
-                placeholderTextColor="#94a3b8"
                 autoCapitalize="characters"
               />
 
               {/* Full Name */}
               <Text style={styles.inputLabel}>Full Name *</Text>
-              <TextInput
-                style={styles.input}
+              <FacultyFieldInput
                 value={newName}
                 onChangeText={setNewName}
                 placeholder="e.g. Dr. Sneha Patil"
-                placeholderTextColor="#94a3b8"
               />
 
               {/* Username */}
               <Text style={styles.inputLabel}>Login Username *</Text>
-              <TextInput
-                style={styles.input}
+              <FacultyFieldInput
                 value={newUsername}
                 onChangeText={setNewUsername}
                 placeholder="e.g. faculty6"
-                placeholderTextColor="#94a3b8"
                 autoCapitalize="none"
               />
 
               {/* Email */}
               <Text style={styles.inputLabel}>Email Address *</Text>
-              <TextInput
-                style={styles.input}
+              <FacultyFieldInput
                 value={newEmail}
                 onChangeText={setNewEmail}
                 placeholder="e.g. sneha.patil@college.edu"
-                placeholderTextColor="#94a3b8"
                 keyboardType="email-address"
                 autoCapitalize="none"
               />
@@ -725,23 +747,19 @@ export default function FacultyManagementScreen({ navigation }) {
 
               {/* Initial Password */}
               <Text style={styles.inputLabel}>Initial Password</Text>
-              <TextInput
-                style={styles.input}
+              <FacultyFieldInput
                 value={newPassword}
                 onChangeText={setNewPassword}
                 placeholder="Faculty@123"
-                placeholderTextColor="#94a3b8"
                 autoCapitalize="none"
               />
 
               {/* Phone */}
               <Text style={styles.inputLabel}>Phone (Optional)</Text>
-              <TextInput
-                style={styles.input}
+              <FacultyFieldInput
                 value={newPhone}
                 onChangeText={setNewPhone}
                 placeholder="e.g. 9876543210"
-                placeholderTextColor="#94a3b8"
                 keyboardType="phone-pad"
               />
 
@@ -790,15 +808,13 @@ export default function FacultyManagementScreen({ navigation }) {
 
             <ScrollView contentContainerStyle={styles.modalScroll} showsVerticalScrollIndicator={false}>
               <Text style={styles.inputLabel}>Full Name *</Text>
-              <TextInput
-                style={styles.input}
+              <FacultyFieldInput
                 value={editName}
                 onChangeText={setEditName}
               />
 
               <Text style={styles.inputLabel}>Email Address *</Text>
-              <TextInput
-                style={styles.input}
+              <FacultyFieldInput
                 value={editEmail}
                 onChangeText={setEditEmail}
                 keyboardType="email-address"
@@ -829,12 +845,10 @@ export default function FacultyManagementScreen({ navigation }) {
               </View>
 
               <Text style={styles.inputLabel}>Phone</Text>
-              <TextInput
-                style={styles.input}
+              <FacultyFieldInput
                 value={editPhone}
                 onChangeText={setEditPhone}
                 placeholder="Optional"
-                placeholderTextColor="#94a3b8"
                 keyboardType="phone-pad"
               />
 
@@ -853,12 +867,10 @@ export default function FacultyManagementScreen({ navigation }) {
 
               {/* Reset Password */}
               <Text style={styles.inputLabel}>Reset Password (leave empty to keep current)</Text>
-              <TextInput
-                style={styles.input}
+              <FacultyFieldInput
                 value={editNewPassword}
                 onChangeText={setEditNewPassword}
                 placeholder="New password (optional)"
-                placeholderTextColor="#94a3b8"
                 autoCapitalize="none"
               />
 
@@ -993,12 +1005,10 @@ export default function FacultyManagementScreen({ navigation }) {
 
               {/* Notes */}
               <Text style={styles.inputLabel}>Notes / Instructions</Text>
-              <TextInput
-                style={styles.input}
+              <FacultyFieldInput
                 value={dutyNotes}
                 onChangeText={setDutyNotes}
                 placeholder="e.g. Lead invigilator, collect answer scripts"
-                placeholderTextColor="#94a3b8"
               />
 
               <View style={styles.modalBtnRow}>
@@ -1082,11 +1092,17 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#cbd5e1",
     paddingHorizontal: 10,
+    overflow: "hidden",
   },
   searchInput: {
     flex: 1,
+    minWidth: 0,
+    height: "100%",
     fontSize: 12,
     color: "#0f172a",
+    backgroundColor: "transparent",
+    borderWidth: 0,
+    outlineStyle: "none",
   },
   addBtn: {
     flexDirection: "row",
@@ -1479,15 +1495,25 @@ const styles = StyleSheet.create({
     marginTop: 10,
     marginBottom: 4,
   },
-  input: {
+  inputWrapper: {
     height: 40,
     backgroundColor: "#f8fafc",
     borderWidth: 1,
     borderColor: "#cbd5e1",
     borderRadius: 8,
     paddingHorizontal: 12,
+    justifyContent: "center",
+    overflow: "hidden",
+  },
+  input: {
+    flex: 1,
+    minWidth: 0,
+    height: "100%",
     fontSize: 13,
     color: "#0f172a",
+    backgroundColor: "transparent",
+    borderWidth: 0,
+    outlineStyle: "none",
   },
   pickerRow: {
     flexDirection: "row",

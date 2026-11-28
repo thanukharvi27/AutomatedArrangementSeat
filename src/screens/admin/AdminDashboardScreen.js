@@ -13,7 +13,7 @@ import { AppLayout } from "../../components/layout/AppLayout";
 import { KpiCard } from "../../components/common/KpiCard";
 import { Card } from "../../components/common/Card";
 import { Button } from "../../components/common/Button";
-import { HBarList, StackedBar, BarChart, Meter } from "../../components/common/Charts";
+import { HBarList, StackedBar, Meter } from "../../components/common/Charts";
 import { LoadingSkeleton } from "../../components/common/LoadingSkeleton";
 import { colors, textStyles, radii, shadows } from "../../theme/tokens";
 import api, { reportApi, examApi, hallApi, departmentApi } from "../../services/api";
@@ -39,7 +39,6 @@ export default function AdminDashboardScreen({ navigation }) {
   });
 
   const [occupancyList, setOccupancyList] = useState([]);
-  const [deptDistribution, setDeptDistribution] = useState([]);
   const [upcomingExams, setUpcomingExams] = useState([]);
   const [activities, setActivities] = useState([]);
 
@@ -95,18 +94,11 @@ export default function AdminDashboardScreen({ navigation }) {
         statsObj.draft_plans = plans.filter((p) => p.status === "DRAFT").length;
       }
 
-      // 4. Department student distribution
+      // 4. Department count
       if (deptsRes.status === "fulfilled") {
         const dData = deptsRes.value.data || deptsRes.value;
         const depts = dData.departments || [];
         statsObj.total_departments = depts.length;
-        setDeptDistribution(
-          depts.map((d) => ({
-            label: d.code,
-            value: d.student_count || 0,
-            color: colors.primary,
-          }))
-        );
       }
 
       // 5. Upcoming exams
@@ -295,27 +287,6 @@ export default function AdminDashboardScreen({ navigation }) {
           </Card>
         </View>
 
-        {/* Third Section: Students by Department BarChart */}
-        <Card style={styles.sectionCard}>
-          <View style={styles.cardHeader}>
-            <View>
-              <Text style={styles.cardTitle}>Students Enrolled by Department</Text>
-              <Text style={styles.cardSub}>Distribution across academic branches</Text>
-            </View>
-            <Pressable onPress={() => navigation.navigate("DepartmentManagement")}>
-              <Text style={styles.linkText}>All Departments →</Text>
-            </Pressable>
-          </View>
-
-          {loading ? (
-            <LoadingSkeleton height={140} />
-          ) : deptDistribution.length > 0 ? (
-            <BarChart data={deptDistribution} height={140} />
-          ) : (
-            <Text style={styles.emptyText}>No departments registered.</Text>
-          )}
-        </Card>
-
         {/* Bottom Section: Upcoming Exams & Recent Activity */}
         <View style={[styles.gridRow, isDesktop && styles.gridRowDesktop]}>
           {/* Upcoming Examinations */}
@@ -443,9 +414,6 @@ const styles = StyleSheet.create({
   },
   flexCard: {
     flex: 1,
-  },
-  sectionCard: {
-    width: "100%",
   },
   cardHeader: {
     flexDirection: "row",

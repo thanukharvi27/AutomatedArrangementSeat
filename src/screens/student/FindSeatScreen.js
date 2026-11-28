@@ -14,6 +14,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { AuthContext } from "../../context/AuthContext";
 import { Card } from "../../components/common/Card";
 import { Button } from "../../components/common/Button";
+import { getWebInputPropsStyle, getContainerFocusStyle } from "../../components/common/Input";
 import { LoadingSkeleton } from "../../components/common/LoadingSkeleton";
 import { FadeIn } from "../../components/common/Motion";
 import { colors, textStyles, spacing, radii, shadows, transition, motion } from "../../theme/tokens";
@@ -29,6 +30,7 @@ export default function FindSeatScreen({ navigation }) {
   const isDesktop = width >= 768;
 
   const [lookupMode, setLookupMode] = useState(MODE_STUDENT);
+  const [inputFocused, setInputFocused] = useState(false);
 
   // Student Seat Lookup state
   const [usn, setUsn] = useState("");
@@ -276,7 +278,10 @@ export default function FindSeatScreen({ navigation }) {
             <View style={styles.modeSwitchWrap} accessibilityRole="tablist">
               <Pressable
                 style={[styles.modeTab, !isFacultyMode && styles.modeTabActive]}
-                onPress={() => setLookupMode(MODE_STUDENT)}
+                onPress={() => {
+                  setLookupMode(MODE_STUDENT);
+                  setInputFocused(false);
+                }}
                 accessibilityRole="tab"
                 accessibilityState={{ selected: !isFacultyMode }}
                 accessibilityLabel="Find Exam Seat"
@@ -293,7 +298,10 @@ export default function FindSeatScreen({ navigation }) {
 
               <Pressable
                 style={[styles.modeTab, isFacultyMode && styles.modeTabActive]}
-                onPress={() => setLookupMode(MODE_FACULTY)}
+                onPress={() => {
+                  setLookupMode(MODE_FACULTY);
+                  setInputFocused(false);
+                }}
                 accessibilityRole="tab"
                 accessibilityState={{ selected: isFacultyMode }}
                 accessibilityLabel="Find Faculty Duties"
@@ -313,15 +321,21 @@ export default function FindSeatScreen({ navigation }) {
               <>
                 <Text style={styles.inputLabel}>University Seat Number (USN)</Text>
                 <View style={styles.inputRow}>
-                  <View style={styles.inputWrapper}>
+                  <View
+                    style={[
+                      styles.inputWrapper,
+                      transition("all", motion.fast),
+                      inputFocused && getContainerFocusStyle(),
+                    ]}
+                  >
                     <Ionicons
                       name="card-outline"
                       size={18}
-                      color={colors.textMuted}
+                      color={inputFocused ? colors.primary : colors.textMuted}
                       style={styles.inputLeadingIcon}
                     />
                     <TextInput
-                      style={styles.textInput}
+                      style={[styles.textInput, getWebInputPropsStyle(colors.surfaceAlt)]}
                       placeholder="e.g. 1MS22CS001"
                       placeholderTextColor={colors.textMuted}
                       value={usn}
@@ -330,6 +344,8 @@ export default function FindSeatScreen({ navigation }) {
                         if (studentError) setStudentError(null);
                         if (studentRateLimited) setStudentRateLimited(false);
                       }}
+                      onFocus={() => setInputFocused(true)}
+                      onBlur={() => setInputFocused(false)}
                       autoCapitalize="characters"
                       autoCorrect={false}
                       returnKeyType="search"
@@ -365,15 +381,21 @@ export default function FindSeatScreen({ navigation }) {
               <>
                 <Text style={styles.inputLabel}>Faculty Employee ID</Text>
                 <View style={styles.inputRow}>
-                  <View style={styles.inputWrapper}>
+                  <View
+                    style={[
+                      styles.inputWrapper,
+                      transition("all", motion.fast),
+                      inputFocused && getContainerFocusStyle(),
+                    ]}
+                  >
                     <Ionicons
                       name="id-card-outline"
                       size={18}
-                      color={colors.textMuted}
+                      color={inputFocused ? colors.primary : colors.textMuted}
                       style={styles.inputLeadingIcon}
                     />
                     <TextInput
-                      style={styles.textInput}
+                      style={[styles.textInput, getWebInputPropsStyle(colors.surfaceAlt)]}
                       placeholder="e.g. FAC-001"
                       placeholderTextColor={colors.textMuted}
                       value={employeeId}
@@ -382,6 +404,8 @@ export default function FindSeatScreen({ navigation }) {
                         if (facultyError) setFacultyError(null);
                         if (facultyRateLimited) setFacultyRateLimited(false);
                       }}
+                      onFocus={() => setInputFocused(true)}
+                      onBlur={() => setInputFocused(false)}
                       autoCapitalize="characters"
                       autoCorrect={false}
                       returnKeyType="search"
@@ -968,20 +992,28 @@ const styles = StyleSheet.create({
     borderRadius: radii.md,
     paddingHorizontal: spacing.md,
     height: 46,
+    overflow: "hidden",
   },
   inputLeadingIcon: {
     marginRight: spacing.sm,
   },
   textInput: {
     flex: 1,
+    minWidth: 0,
     ...textStyles.body,
     fontSize: 15,
     fontWeight: "600",
     color: colors.text,
     height: "100%",
+    backgroundColor: "transparent",
+    borderWidth: 0,
+    outlineStyle: "none",
   },
   clearBtn: {
     padding: 4,
+    marginLeft: spacing.xs,
+    backgroundColor: "transparent",
+    borderRadius: radii.sm,
   },
   findBtn: {
     minWidth: 120,

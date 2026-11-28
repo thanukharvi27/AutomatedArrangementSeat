@@ -8,7 +8,48 @@ import {
   Platform,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { colors, radii, shadows, motion, transition } from "../../theme/tokens";
+import { colors, darkColors, radii, shadows, motion, transition } from "../../theme/tokens";
+
+/**
+ * Shared web-only reset styles for inner TextInput elements so they blend seamlessly
+ * inside themed parent containers without browser outlines or autofill rectangles.
+ */
+export const getWebInputPropsStyle = (
+  autofillBg = colors.surfaceAlt,
+  textColor = colors.text,
+  placeholderColor = colors.textMuted
+) =>
+  Platform.OS === "web"
+    ? {
+        outlineStyle: "none",
+        outlineWidth: 0,
+        boxShadow: "none",
+        backgroundColor: "transparent",
+        borderWidth: 0,
+        width: "100%",
+        minWidth: 0,
+        "--ee-autofill-bg": autofillBg,
+        "--ee-input-color": textColor,
+        "--ee-placeholder-color": placeholderColor,
+      }
+    : {
+        minWidth: 0,
+      };
+
+/**
+ * Consistent theme-aware focus styling for outer input wrapper containers.
+ */
+export const getContainerFocusStyle = () => ({
+  borderColor: colors.primary,
+  ...(Platform.OS === "web"
+    ? {
+        boxShadow:
+          colors === darkColors
+            ? "0 0 0 3px rgba(123, 141, 240, 0.25)"
+            : "0 0 0 3px rgba(100, 120, 217, 0.2)",
+      }
+    : shadows.subtle),
+});
 
 /**
  * Input with focus ring support
@@ -25,6 +66,8 @@ export const Input = ({
   disabled = false,
   style,
   inputStyle,
+  onFocus,
+  onBlur,
   ...props
 }) => {
   const [focused, setFocused] = useState(false);
@@ -37,7 +80,7 @@ export const Input = ({
         style={[
           styles.container,
           transition("all", motion.fast),
-          focused && styles.containerFocused,
+          focused && getContainerFocusStyle(),
           Boolean(error) && styles.containerError,
           disabled && styles.containerDisabled,
         ]}
@@ -52,9 +95,19 @@ export const Input = ({
           placeholderTextColor={colors.textMuted}
           secureTextEntry={secureTextEntry}
           editable={!disabled}
-          onFocus={() => setFocused(true)}
-          onBlur={() => setFocused(false)}
-          style={[styles.input, inputStyle]}
+          onFocus={(e) => {
+            setFocused(true);
+            if (onFocus) onFocus(e);
+          }}
+          onBlur={(e) => {
+            setFocused(false);
+            if (onBlur) onBlur(e);
+          }}
+          style={[
+            styles.input,
+            getWebInputPropsStyle(disabled ? colors.surfaceAlt : colors.surface),
+            inputStyle,
+          ]}
           {...props}
         />
 
@@ -75,6 +128,8 @@ export const SearchInput = ({
   placeholder = "Search...",
   onClear,
   style,
+  onFocus,
+  onBlur,
   ...props
 }) => {
   const [focused, setFocused] = useState(false);
@@ -84,7 +139,7 @@ export const SearchInput = ({
       style={[
         styles.searchContainer,
         transition("all", motion.fast),
-        focused && styles.containerFocused,
+        focused && getContainerFocusStyle(),
         style,
       ]}
     >
@@ -101,9 +156,15 @@ export const SearchInput = ({
         onChangeText={onChangeText}
         placeholder={placeholder}
         placeholderTextColor={colors.textMuted}
-        onFocus={() => setFocused(true)}
-        onBlur={() => setFocused(false)}
-        style={styles.searchInput}
+        onFocus={(e) => {
+          setFocused(true);
+          if (onFocus) onFocus(e);
+        }}
+        onBlur={(e) => {
+          setFocused(false);
+          if (onBlur) onBlur(e);
+        }}
+        style={[styles.searchInput, getWebInputPropsStyle(colors.surface)]}
         autoCapitalize="none"
         autoCorrect={false}
         {...props}
@@ -146,12 +207,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     flexDirection: "row",
     alignItems: "center",
-  },
-  containerFocused: {
-    borderColor: colors.primary,
-    ...(Platform.OS === "web"
-      ? { boxShadow: "0 0 0 3px rgba(100, 120, 217, 0.2)" }
-      : shadows.subtle),
+    overflow: "hidden",
   },
   containerError: {
     borderColor: colors.danger,
@@ -162,9 +218,12 @@ const styles = StyleSheet.create({
   },
   input: {
     flex: 1,
+    minWidth: 0,
     height: "100%",
     fontSize: 13,
     color: colors.text,
+    backgroundColor: "transparent",
+    borderWidth: 0,
     outlineStyle: "none",
   },
   iconLeft: {
@@ -187,15 +246,19 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     flexDirection: "row",
     alignItems: "center",
+    overflow: "hidden",
   },
   searchIcon: {
     marginRight: 8,
   },
   searchInput: {
     flex: 1,
+    minWidth: 0,
     height: "100%",
     fontSize: 13,
     color: colors.text,
+    backgroundColor: "transparent",
+    borderWidth: 0,
     outlineStyle: "none",
   },
   clearBtn: {
