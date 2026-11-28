@@ -14,7 +14,8 @@ import { Card } from "../../components/common/Card";
 import { Button } from "../../components/common/Button";
 import { Meter } from "../../components/common/Charts";
 import { LoadingSkeleton } from "../../components/common/LoadingSkeleton";
-import { colors, radii, textStyles, shadows } from "../../theme/tokens";
+import { SeatGrid } from "../../components/SeatGrid";
+import { colors, radii, textStyles, shadows, transition } from "../../theme/tokens";
 import { showAlert, confirmAction } from "../../utils/alerts";
 import api, { examApi, hallApi, seatingApi } from "../../services/api";
 
@@ -33,6 +34,19 @@ export default function SeatingGeneratorScreen({ navigation }) {
   const [selectedStrategy, setSelectedStrategy] = useState("INTERLEAVE"); // INTERLEAVE | CONSECUTIVE
   const [selectedHallIds, setSelectedHallIds] = useState([]);
   const [selectedExamRegCount, setSelectedExamRegCount] = useState(0);
+
+  // Classroom bench selection (step 3)
+  const [layout, setLayout] = useState({ halls: [], total_eligible: 0, eligible_by_branch: {} });
+  const [layoutLoading, setLayoutLoading] = useState(false);
+  const [layoutError, setLayoutError] = useState("");
+  const [sideMode, setSideMode] = useState("BOTH"); // BOTH | LEFT | RIGHT | CUSTOM
+  const [branchSeparation, setBranchSeparation] = useState(true);
+  const [customSeatIds, setCustomSeatIds] = useState({}); // seat_id -> true (CUSTOM mode)
+  const [previewHallId, setPreviewHallId] = useState(null);
+  const [preview, setPreview] = useState(null); // backend dry-run summary
+  const [previewError, setPreviewError] = useState("");
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [result, setResult] = useState(null); // { summary, planId } after generation
 
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
@@ -108,47 +122,157 @@ export default function SeatingGeneratorScreen({ navigation }) {
     }
   };
 
-  const selectedExam = exams.find((e) => e.id === selectedExamId);
-  const selectedHalls = halls.filter((h) => selectedHallIds.includes(h.id));
-  const totalCapacity = selectedHalls.reduce((sum, h) => sum + (h.capacity || 0), 0);
-  const hasEnoughSeats = totalCapacity >= selectedExamRegCount;
-  const occupancyPct = totalCapacity > 0 ? Math.min(100, Math.round((selectedExamRegCount / totalCapacity) * 100)) : 0;
+  useEffect(() => {
+    let cancelled = false;
+    setLayoutLoading(true);
+    setLayoutError("");
+    seatingApi
+      .getLayout(selectedExamId)
+      .then((res) => {
+        if (cancelled) return;
+        const d = res.data || res;
+        setLayout({ halls: d.halls || [], total_eligible: d.total_eligible || 0, eligible_by_branch: d.eligible_by_branch || {} });
+      })
+      .catch((err) => {
+        if (!cancelled) setLayoutError(err.response?.data?.error || err.message || "Could not load classroom layout.");
+      })
+      .finally(() => {
+        if (!cancelled) setLayoutLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedExamId]);
 
-  const executeGenerate = async (force = false) => {
+  const selectedExam = exams.find((e) => e.id === selectedExamId);
+  const layoutHalls = layout.halls;
+  const selectedLayoutHalls = layoutHalls.filter((h) => selectedHallIds.includes(h.id));
+  const previewHall = layoutHalls.find((h) => h.id === previewHallId) || selectedLayoutHalls[0] || layoutHalls[0];
+
+  // Free = active and not used by an overlapping exam
+  const isAvailable = (seat) => seat.is_active && !seat.taken_by;
+  const modeEnabled = (seat, mode = sideMode) => {
+    if (mode === "LEFT") return seat.position === "LEFT";
+    if (mode === "RIGHT") return seat.position === "RIGHT";
+    if (mode === "CUSTOM") return !!customSeatIds[seat.seat_id];
+    return true;
+  };
+  const enabledSeats = selectedLayoutHalls.flatMap((h) =>
+    h.seats.filter((seat) => isAvailable(seat) && modeEnabled(seat)).map((seat) => ({ ...seat, hall_id: h.id }))
+  );
+  const selectedBenchCount = new Set(enabledSeats.map((seat) => `${seat.hall_id}-${seat.row_num}-${seat.bench_in_row}`)).size;
+  const leftSelected = enabledSeats.filter((seat) => seat.position === "LEFT").length;
+  const rightSelected = enabledSeats.length - leftSelected;
+  const requiredStudents = selectedExamId ? layout.total_eligible || selectedExamRegCount : 0;
+  const expectedAllocated = preview ? preview.total_allocated : null;
+  const expectedUnallocated = preview ? preview.total_unallocated : null;
+  const hasEnoughSeats = preview ? preview.total_unallocated === 0 : false;
+  const occupancyPct = requiredStudents > 0 && preview ? Math.min(100, Math.round((preview.total_allocated / requiredStudents) * 100)) : 0;
+
+  const buildPayload = (extra = {}) => ({
+    exam_id: selectedExamId,
+    hall_ids: selectedHallIds,
+    policy: selectedStrategy,
+    side_mode: sideMode,
+    branch_separation: branchSeparation,
+    ...(sideMode === "CUSTOM" ? { seat_ids: enabledSeats.map((seat) => seat.seat_id) } : {}),
+    ...extra,
+  });
+  const payloadKey = JSON.stringify(buildPayload());
+
+  // Backend dry run: the real allocation engine decides how many students fit
+  useEffect(() => {
+    if (!selectedExamId || selectedHallIds.length === 0) {
+      setPreview(null);
+      return undefined;
+    }
+    let cancelled = false;
+    setPreviewLoading(true);
+    const timer = setTimeout(async () => {
+      try {
+        const res = await seatingApi.preview(JSON.parse(payloadKey));
+        const d = res.data || res;
+        if (!cancelled) {
+          setPreview(d.summary || null);
+          setPreviewError(d.success ? "" : d.error || "Preview failed.");
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setPreview(null);
+          setPreviewError(err.response?.data?.error || err.message || "Preview failed.");
+        }
+      } finally {
+        if (!cancelled) setPreviewLoading(false);
+      }
+    }, 350);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [payloadKey]);
+
+  const currentSelectionMap = () => {
+    const map = {};
+    layoutHalls.forEach((h) =>
+      h.seats.forEach((seat) => {
+        if (isAvailable(seat) && modeEnabled(seat)) map[seat.seat_id] = true;
+      })
+    );
+    return map;
+  };
+
+  const changeSideMode = (mode) => {
+    // Custom starts from what the current mode enables, so the admin only adjusts it
+    if (mode === "CUSTOM" && sideMode !== "CUSTOM") setCustomSeatIds(currentSelectionMap());
+    setSideMode(mode);
+  };
+
+  const toggleSeats = (seats, hallId) => {
+    const free = seats.filter(isAvailable);
+    if (free.length === 0) return;
+    const next = sideMode === "CUSTOM" ? { ...customSeatIds } : currentSelectionMap();
+    const turnOn = !(selectedHallIds.includes(hallId) && free.every((seat) => next[seat.seat_id]));
+    free.forEach((seat) => {
+      if (turnOn) next[seat.seat_id] = true;
+      else delete next[seat.seat_id];
+    });
+    if (turnOn && !selectedHallIds.includes(hallId)) setSelectedHallIds([...selectedHallIds, hallId]);
+    setCustomSeatIds(next);
+    setSideMode("CUSTOM");
+  };
+
+  const selectionSeatState = (hallId) => (seat) => {
+    if (!seat.is_active) return "unavailable";
+    if (seat.taken_by) return "occupied";
+    return selectedHallIds.includes(hallId) && modeEnabled(seat) ? "selected" : "disabled";
+  };
+
+  const executeGenerate = async (force = false, allowPartial = false) => {
     setGenerating(true);
     try {
-      const payload = {
-        exam_id: selectedExamId,
-        hall_ids: selectedHallIds,
-        policy: selectedStrategy, // INTERLEAVE or CONSECUTIVE
-        force,
-      };
-
-      const res = await seatingApi.generate(payload);
+      const res = await seatingApi.generate(buildPayload({ force, allow_partial: allowPartial }));
       const data = res.data || res;
       if (data.success) {
-        showAlert(
-          "Seating Generated!",
-          data.message || "Anti-collision seating arrangement generated successfully!"
-        );
-        loadData();
         const planId = data.plan?.id || (data.plans && data.plans[0]?.id);
-        if (planId) {
-          navigation.navigate("SeatingPlanDetail", { planId });
-        }
+        setResult({ summary: data.summary || null, planId });
+        showAlert("Seating Generated!", data.message || "Bench seating arrangement generated successfully!");
+        loadData();
       } else {
         showAlert("Allocation Note", data.error || "Could not generate seating plan.");
       }
     } catch (err) {
       const errMsg = err.response?.data?.error || err.message || "";
+      const report = err.response?.data?.capacity_report;
       if (errMsg.toLowerCase().includes("published") && !force) {
         confirmAction({
           title: "Overwrite Published Plan?",
-          message: "A published seating plan already exists for this exam. Do you want to overwrite it?",
+          message: "A published seating plan already exists for this exam. Regenerating archives it and creates a new draft version. Continue?",
           confirmText: "Overwrite",
           destructive: true,
-          onConfirm: () => executeGenerate(true),
+          onConfirm: () => executeGenerate(true, allowPartial),
         });
+      } else if (report?.total_unallocated && !allowPartial) {
+        confirmPartial(report.total_unallocated, force);
       } else {
         showAlert("Generation Failed", errMsg || "Allocation failed.");
       }
@@ -157,17 +281,44 @@ export default function SeatingGeneratorScreen({ navigation }) {
     }
   };
 
+  const confirmPartial = (count, force = false) => {
+    confirmAction({
+      title: "Generate Partial Allocation?",
+      message: `${count} student(s) cannot be seated in the selected positions${branchSeparation ? " without two students of the same branch sharing a bench" : ""}. They will be listed as unallocated. Continue?`,
+      confirmText: "Generate Partial Plan",
+      destructive: true,
+      onConfirm: () => executeGenerate(force, true),
+    });
+  };
+
   const handleGenerate = () => {
     if (!selectedExamId) {
       showAlert("Missing Selection", "Please select an examination in Step 1.");
       return;
     }
-    if (selectedHallIds.length === 0) {
-      showAlert("Missing Selection", "Please select at least one examination hall in Step 3.");
+    if (selectedHallIds.length === 0 || enabledSeats.length === 0) {
+      showAlert("Missing Selection", "Please select at least one hall and seat position in Step 3.");
       return;
     }
-    executeGenerate(false);
+    setResult(null);
+    if (preview?.total_unallocated > 0) {
+      confirmPartial(preview.total_unallocated);
+      return;
+    }
+    executeGenerate(false, false);
   };
+
+  const SIDE_MODES = [
+    { key: "BOTH", label: "Both Sides", icon: "people-outline", desc: "Up to two students per bench, different branches" },
+    { key: "LEFT", label: "Left Side Only", icon: "arrow-back-outline", desc: "One student per bench, left position" },
+    { key: "RIGHT", label: "Right Side Only", icon: "arrow-forward-outline", desc: "One student per bench, right position" },
+    { key: "CUSTOM", label: "Custom", icon: "construct-outline", desc: "Tap benches or positions to switch them on or off" },
+  ];
+  const sideModeLabel = SIDE_MODES.find((m) => m.key === sideMode)?.label;
+  const branchText = (map) =>
+    Object.entries(map || {})
+      .map(([code, n]) => `${code} ${n}`)
+      .join(" • ") || "—";
 
   const STEPS = [
     { num: 1, title: "Exam" },
@@ -305,7 +456,7 @@ export default function SeatingGeneratorScreen({ navigation }) {
                 </View>
                 <Text style={styles.strategyTitle}>INTERLEAVE Strategy (Recommended)</Text>
                 <Text style={styles.strategyDesc}>
-                  Seats candidates from different branches and departments alternately on adjacent benches to prevent academic collusion.
+                  Mixes branches: each bench pairs the largest remaining branch with a different one, so bench partners never share a branch.
                 </Text>
               </Pressable>
 
@@ -327,9 +478,10 @@ export default function SeatingGeneratorScreen({ navigation }) {
                 </View>
                 <Text style={styles.strategyTitle}>CONSECUTIVE Strategy</Text>
                 <Text style={styles.strategyDesc}>
-                  Allocates candidate seats strictly sequentially by registered USN roll order within assigned examination halls.
+                  Seats candidates in branch and USN roll order (e.g. CSE-001 | ECE-001), still never placing two of one branch on a bench.
                 </Text>
               </Pressable>
+
             </View>
 
             <View style={styles.navRow}>
@@ -346,19 +498,41 @@ export default function SeatingGeneratorScreen({ navigation }) {
           </Card>
         )}
 
-        {/* STEP 3: HALLS & CAPACITY VALIDATION */}
+        {/* STEP 3: HALLS, BENCHES & POSITIONS */}
         {currentStep === 3 && (
           <Card style={styles.stepCard}>
             <View style={styles.stepHeader}>
-              <Text style={styles.stepTitle}>Step 3: Examination Halls & Capacity</Text>
-              <Text style={styles.stepSub}>Toggle rooms to include in this allocation</Text>
+              <Text style={styles.stepTitle}>Step 3: Examination Halls & Classroom Benches</Text>
+              <Text style={styles.stepSub}>Choose halls, then which bench positions candidates may use</Text>
             </View>
 
-            {/* Capacity Meter Bar */}
+            {/* Capacity panel */}
             <View style={styles.capacityCard}>
+              <View style={styles.statGrid}>
+                <View style={styles.statBox}>
+                  <Text style={styles.statNum}>{selectedBenchCount}</Text>
+                  <Text style={styles.statLabel}>Benches selected</Text>
+                </View>
+                <View style={styles.statBox}>
+                  <Text style={styles.statNum}>{enabledSeats.length}</Text>
+                  <Text style={styles.statLabel}>Positions (L {leftSelected} / R {rightSelected})</Text>
+                </View>
+                <View style={styles.statBox}>
+                  <Text style={styles.statNum}>{requiredStudents}</Text>
+                  <Text style={styles.statLabel}>Required students</Text>
+                </View>
+                <View style={styles.statBox}>
+                  <Text style={styles.statNum}>{previewLoading ? "…" : expectedAllocated ?? "—"}</Text>
+                  <Text style={styles.statLabel}>Allocatable (branch rule)</Text>
+                </View>
+              </View>
               <View style={styles.capacityTop}>
                 <Text style={styles.capacityLabel}>
-                  Required Seats: <Text style={{ fontWeight: "700" }}>{selectedExamRegCount}</Text> • Total Selected: <Text style={{ fontWeight: "700" }}>{totalCapacity}</Text>
+                  {previewError
+                    ? previewError
+                    : preview
+                    ? `${preview.total_allocated} of ${preview.total_eligible} students can be seated${preview.total_unallocated ? ` • ${preview.total_unallocated} unallocated` : ""}`
+                    : "Select an exam and at least one hall"}
                 </Text>
                 <Text style={[styles.capacityPct, { color: hasEnoughSeats ? colors.successText : colors.dangerText }]}>
                   {hasEnoughSeats ? "SUFFICIENT CAPACITY" : "INSUFFICIENT CAPACITY"}
@@ -367,32 +541,116 @@ export default function SeatingGeneratorScreen({ navigation }) {
               <Meter percent={occupancyPct} color={hasEnoughSeats ? colors.success : colors.danger} />
             </View>
 
-            <View style={styles.hallsList}>
-              {halls.map((h) => {
-                const isSelected = selectedHallIds.includes(h.id);
+            {/* Side mode */}
+            <Text style={styles.subHeading}>Seat positions</Text>
+            <View style={styles.modeRow} accessibilityRole="radiogroup">
+              {SIDE_MODES.map((m) => {
+                const active = sideMode === m.key;
                 return (
                   <Pressable
-                    key={h.id}
-                    onPress={() => handleToggleHall(h.id)}
-                    style={[styles.hallItem, isSelected && styles.hallItemActive]}
+                    key={m.key}
+                    onPress={() => changeSideMode(m.key)}
+                    accessibilityRole="radio"
+                    accessibilityState={{ checked: active }}
+                    accessibilityLabel={`${m.label}: ${m.desc}`}
+                    style={({ hovered }) => [styles.modeCard, hovered && styles.modeCardHover, active && styles.modeCardActive]}
                   >
-                    <View style={styles.hallItemLeft}>
-                      <Ionicons
-                        name={isSelected ? "checkbox" : "square-outline"}
-                        size={18}
-                        color={isSelected ? colors.primary : colors.textMuted}
-                        style={{ marginRight: 10 }}
-                      />
-                      <View>
-                        <Text style={styles.hallName}>{h.hall_code || h.name}</Text>
-                        <Text style={styles.hallSub}>{h.building} (Floor {h.floor})</Text>
-                      </View>
+                    <Ionicons name={m.icon} size={18} color={active ? colors.primary : colors.textSecondary} />
+                    <View style={{ flex: 1 }}>
+                      <Text style={[styles.modeTitle, active && { color: colors.primaryDark }]}>{m.label}</Text>
+                      <Text style={styles.modeDesc}>{m.desc}</Text>
                     </View>
-                    <Text style={styles.hallCap}>{h.capacity} seats</Text>
                   </Pressable>
                 );
               })}
             </View>
+
+            <Pressable
+              onPress={() => setBranchSeparation(!branchSeparation)}
+              accessibilityRole="checkbox"
+              accessibilityState={{ checked: branchSeparation }}
+              style={styles.toggleRow}
+            >
+              <Ionicons
+                name={branchSeparation ? "checkbox" : "square-outline"}
+                size={18}
+                color={branchSeparation ? colors.primary : colors.textMuted}
+              />
+              <Text style={styles.toggleText}>
+                Branch separation: never seat two students of the same branch on one bench (recommended)
+              </Text>
+            </Pressable>
+
+            {/* Halls */}
+            <Text style={styles.subHeading}>Examination halls</Text>
+            {layoutLoading ? (
+              <LoadingSkeleton height={120} />
+            ) : layoutError ? (
+              <Text style={styles.errorText}>{layoutError}</Text>
+            ) : layoutHalls.length === 0 ? (
+              <Text style={styles.emptyText}>No active halls. Add halls in Hall Management first.</Text>
+            ) : (
+              <View style={styles.hallsList}>
+                {layoutHalls.map((h) => {
+                  const isSelected = selectedHallIds.includes(h.id);
+                  const isPreviewed = previewHall?.id === h.id;
+                  const hallEnabled = enabledSeats.filter((seat) => seat.hall_id === h.id).length;
+                  return (
+                    <View key={h.id} style={[styles.hallItem, isSelected && styles.hallItemActive]}>
+                      <Pressable
+                        onPress={() => handleToggleHall(h.id)}
+                        accessibilityRole="checkbox"
+                        accessibilityState={{ checked: isSelected }}
+                        accessibilityLabel={`Include hall ${h.name}`}
+                        style={styles.hallItemLeft}
+                      >
+                        <Ionicons
+                          name={isSelected ? "checkbox" : "square-outline"}
+                          size={18}
+                          color={isSelected ? colors.primary : colors.textMuted}
+                          style={{ marginRight: 10 }}
+                        />
+                        <View>
+                          <Text style={styles.hallName}>{h.hall_code || h.name}</Text>
+                          <Text style={styles.hallSub}>
+                            {h.building} (Floor {h.floor}) • {h.num_rows} rows • {h.total_benches} benches
+                          </Text>
+                        </View>
+                      </Pressable>
+                      <View style={styles.hallRight}>
+                        <Text style={styles.hallCap}>{isSelected ? `${hallEnabled} positions` : `${h.capacity} seats`}</Text>
+                        <Button
+                          title={isPreviewed ? "Previewing" : "Preview"}
+                          size="sm"
+                          variant={isPreviewed ? "primary" : "outline"}
+                          onPress={() => setPreviewHallId(h.id)}
+                        />
+                      </View>
+                    </View>
+                  );
+                })}
+              </View>
+            )}
+
+            {/* Classroom preview */}
+            {previewHall && !layoutLoading && (
+              <View>
+                <Text style={styles.subHeading}>
+                  Classroom preview: {previewHall.name} • {previewHall.building}, Floor {previewHall.floor} • {previewHall.total_benches} benches
+                </Text>
+                <Text style={styles.hintText}>
+                  Tap a position to switch it on or off, or tap a bench title to switch both. This changes the mode to Custom.
+                </Text>
+                <SeatGrid
+                  hall={previewHall}
+                  seatsGrid={previewHall.seats}
+                  getSeatState={selectionSeatState(previewHall.id)}
+                  onSeatPress={(seat) => toggleSeats([seat], previewHall.id)}
+                  onBenchPress={(benchSeats) => toggleSeats(benchSeats, previewHall.id)}
+                  legendStates={["selected", "disabled", "occupied", "unavailable"]}
+                />
+              </View>
+            )}
 
             <View style={styles.navRow}>
               <Button
@@ -412,28 +670,43 @@ export default function SeatingGeneratorScreen({ navigation }) {
         {currentStep === 4 && (
           <Card style={styles.stepCard}>
             <View style={styles.stepHeader}>
-              <Text style={styles.stepTitle}>Step 4: Review Allocation Parameters</Text>
+              <Text style={styles.stepTitle}>Step 4: Review Allocation</Text>
               <Text style={styles.stepSub}>Confirm configuration before generating seating arrangement</Text>
             </View>
 
             <View style={styles.reviewBox}>
-              <View style={styles.reviewItem}>
-                <Text style={styles.reviewLabel}>Selected Exam</Text>
-                <Text style={styles.reviewVal}>{selectedExam?.course_name || selectedExam?.name} ({selectedExam?.course_code || selectedExam?.subject_code})</Text>
-              </View>
-              <View style={styles.reviewItem}>
-                <Text style={styles.reviewLabel}>Registered Candidates</Text>
-                <Text style={styles.reviewVal}>{selectedExamRegCount} Candidates</Text>
-              </View>
-              <View style={styles.reviewItem}>
-                <Text style={styles.reviewLabel}>Seating Strategy</Text>
-                <Text style={[styles.reviewVal, { color: colors.primaryDark }]}>{selectedStrategy}</Text>
-              </View>
-              <View style={styles.reviewItem}>
-                <Text style={styles.reviewLabel}>Included Halls</Text>
-                <Text style={styles.reviewVal}>{selectedHalls.map((h) => h.hall_code || h.name).join(", ")} ({totalCapacity} seats)</Text>
-              </View>
+              {[
+                ["Examination", `${selectedExam?.course_name || selectedExam?.name || "—"} (${selectedExam?.course_code || selectedExam?.subject_code || "—"}) • ${selectedExam?.exam_date || ""}`],
+                ["Selected halls", selectedLayoutHalls.map((h) => h.hall_code || h.name).join(", ") || "—"],
+                ["Benches selected", String(selectedBenchCount)],
+                ["Positions selected", `${enabledSeats.length} (Left ${leftSelected} • Right ${rightSelected})`],
+                ["Seat positions", sideModeLabel],
+                ["Allocation strategy", selectedStrategy],
+                ["Branch separation", branchSeparation ? "On: no two students of one branch share a bench" : "Off"],
+                ["Total eligible students", `${requiredStudents} (${branchText(layout.eligible_by_branch)})`],
+                ["Available seating capacity", `${enabledSeats.length} positions`],
+                ["Expected allocated", previewLoading ? "Calculating…" : expectedAllocated ?? "—"],
+                ["Expected unallocated", previewLoading ? "Calculating…" : expectedUnallocated ?? "—"],
+              ].map(([label, val]) => (
+                <View key={label} style={styles.reviewItem}>
+                  <Text style={styles.reviewLabel}>{label}</Text>
+                  <Text style={[styles.reviewVal, label === "Expected unallocated" && expectedUnallocated > 0 && { color: colors.dangerText }]}>
+                    {String(val)}
+                  </Text>
+                </View>
+              ))}
             </View>
+
+            {previewError ? <Text style={styles.errorText}>{previewError}</Text> : null}
+            {expectedUnallocated > 0 && (
+              <View style={styles.warnBox}>
+                <Ionicons name="warning-outline" size={16} color={colors.warningText} />
+                <Text style={styles.warnText}>
+                  {expectedUnallocated} student(s) do not fit ({branchText(preview?.unallocated_by_branch)}). Add halls or positions in Step 3, or
+                  confirm a partial plan in Step 5. Every unallocated student will be listed.
+                </Text>
+              </View>
+            )}
 
             <View style={styles.navRow}>
               <Button
@@ -453,26 +726,78 @@ export default function SeatingGeneratorScreen({ navigation }) {
         {currentStep === 5 && (
           <Card style={styles.stepCard}>
             <View style={styles.stepHeader}>
-              <Text style={styles.stepTitle}>Step 5: Run Automated Engine</Text>
-              <Text style={styles.stepSub}>Execute allocation algorithm and generate hall seating chart</Text>
+              <Text style={styles.stepTitle}>Step 5: Generate Seating Plan</Text>
+              <Text style={styles.stepSub}>Run the bench allocation engine and review the result</Text>
             </View>
 
-            <View style={styles.generateCtaBox}>
-              <View style={styles.sparkleIcon}>
-                <Ionicons name="sparkles" size={32} color={colors.primary} />
+            {!result ? (
+              <View style={styles.generateCtaBox}>
+                <View style={styles.sparkleIcon}>
+                  <Ionicons name="sparkles" size={32} color={colors.primary} />
+                </View>
+                <Text style={styles.generateCtaTitle}>Ready to Allocate Seats</Text>
+                <Text style={styles.generateCtaSub}>
+                  The engine fills {enabledSeats.length} selected positions across {selectedBenchCount} benches
+                  {branchSeparation ? ", never seating two students of one branch on the same bench" : ""}.
+                </Text>
+                {expectedUnallocated > 0 && (
+                  <Text style={[styles.generateCtaSub, { color: colors.dangerText }]}>
+                    {expectedUnallocated} student(s) will be unallocated. You will be asked to confirm.
+                  </Text>
+                )}
+
+                <Button
+                  title={generating ? "Running Allocation Engine..." : "Generate Seating Plan Now"}
+                  loading={generating}
+                  onPress={handleGenerate}
+                  style={{ width: "100%", maxWidth: 360, marginTop: 14 }}
+                />
               </View>
-              <Text style={styles.generateCtaTitle}>Ready to Allocate Seats</Text>
-              <Text style={styles.generateCtaSub}>
-                The allocation engine will interleave candidate branches, optimize bench assignments, and generate official visual seating plans.
-              </Text>
+            ) : (
+              <View style={styles.resultBox}>
+                <View style={styles.statGrid}>
+                  {[
+                    ["Allocated", result.summary?.total_allocated],
+                    ["Unallocated", result.summary?.total_unallocated],
+                    ["Benches", result.summary?.benches_selected],
+                    ["Left used", result.summary?.left_used],
+                    ["Right used", result.summary?.right_used],
+                    ["Vacant positions", result.summary?.vacant_positions],
+                  ].map(([label, val]) => (
+                    <View key={label} style={styles.statBox}>
+                      <Text style={styles.statNum}>{val ?? "—"}</Text>
+                      <Text style={styles.statLabel}>{label}</Text>
+                    </View>
+                  ))}
+                </View>
+                <Text style={styles.reviewLabel}>Allocated per branch: {branchText(result.summary?.allocated_by_branch)}</Text>
 
-              <Button
-                title={generating ? "Running Allocation Engine..." : "Generate Seating Plan Now"}
-                loading={generating}
-                onPress={handleGenerate}
-                style={{ width: "100%", maxWidth: 360, marginTop: 14 }}
-              />
-            </View>
+                {result.summary?.unallocated_students?.length > 0 && (
+                  <View style={styles.warnBoxCol}>
+                    <Text style={styles.warnTitle}>
+                      Unallocated students ({result.summary.unallocated_students.length})
+                    </Text>
+                    <ScrollView style={{ maxHeight: 220 }} nestedScrollEnabled>
+                      {result.summary.unallocated_students.map((u) => (
+                        <Text key={u.student_id} style={styles.warnText}>
+                          {u.usn} • {u.student_name} • {u.department_code}
+                        </Text>
+                      ))}
+                    </ScrollView>
+                  </View>
+                )}
+
+                <View style={{ flexDirection: "row", gap: 10, flexWrap: "wrap" }}>
+                  {result.planId ? (
+                    <Button
+                      title="Open Seating Plan →"
+                      onPress={() => navigation.navigate("SeatingPlanDetail", { planId: result.planId })}
+                    />
+                  ) : null}
+                  <Button title="Generate Again" variant="secondary" onPress={() => setResult(null)} />
+                </View>
+              </View>
+            )}
 
             <View style={styles.navRow}>
               <Button
@@ -710,6 +1035,127 @@ const styles = StyleSheet.create({
   hallsList: {
     gap: 8,
   },
+  hallRight: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  subHeading: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: colors.text,
+    marginTop: 4,
+  },
+  hintText: {
+    fontSize: 11,
+    color: colors.textMuted,
+    marginTop: 2,
+  },
+  statGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 10,
+  },
+  statBox: {
+    flex: 1,
+    minWidth: 120,
+    backgroundColor: colors.surface,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.borderLight,
+    padding: 10,
+  },
+  statNum: {
+    fontSize: 18,
+    fontWeight: "700",
+    color: colors.text,
+  },
+  statLabel: {
+    fontSize: 11,
+    color: colors.textSecondary,
+  },
+  modeRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 10,
+  },
+  modeCard: {
+    flex: 1,
+    minWidth: 200,
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 10,
+    backgroundColor: colors.surfaceAlt,
+    borderRadius: radii.md,
+    borderWidth: 1.5,
+    borderColor: colors.border,
+    padding: 12,
+    cursor: "pointer",
+    ...transition("all", 160),
+  },
+  modeCardHover: {
+    borderColor: colors.primaryMuted,
+  },
+  modeCardActive: {
+    backgroundColor: colors.primaryLight,
+    borderColor: colors.primary,
+  },
+  modeTitle: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: colors.text,
+  },
+  modeDesc: {
+    fontSize: 11,
+    color: colors.textSecondary,
+    marginTop: 2,
+  },
+  toggleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    cursor: "pointer",
+  },
+  toggleText: {
+    fontSize: 12,
+    color: colors.text,
+    flex: 1,
+  },
+  errorText: {
+    fontSize: 12,
+    color: colors.dangerText,
+  },
+  warnBox: {
+    flexDirection: "row",
+    gap: 8,
+    alignItems: "flex-start",
+    backgroundColor: colors.warningLight,
+    borderColor: colors.warningBorder,
+    borderWidth: 1,
+    borderRadius: radii.md,
+    padding: 10,
+  },
+  warnBoxCol: {
+    backgroundColor: colors.warningLight,
+    borderColor: colors.warningBorder,
+    borderWidth: 1,
+    borderRadius: radii.md,
+    padding: 10,
+    gap: 4,
+  },
+  warnTitle: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: colors.warningText,
+  },
+  warnText: {
+    fontSize: 12,
+    color: colors.warningText,
+    flex: 1,
+  },
+  resultBox: {
+    gap: 12,
+  },
   hallItem: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -753,6 +1199,8 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
+    gap: 12,
+    flexWrap: "wrap",
   },
   reviewLabel: {
     fontSize: 12,

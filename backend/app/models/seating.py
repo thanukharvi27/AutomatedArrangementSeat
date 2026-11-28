@@ -1,3 +1,4 @@
+import json
 from datetime import datetime
 from app.extensions import db
 
@@ -12,6 +13,8 @@ class SeatingPlan(db.Model):
     notes = db.Column(db.Text, nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     published_at = db.Column(db.DateTime, nullable=True)
+    # JSON: side_mode, hall_ids, seat_ids (CUSTOM), policy, branch_separation, summary. NULL for plans made before benches.
+    config = db.Column(db.Text, nullable=True)
 
     __table_args__ = (
         db.UniqueConstraint("exam_id", "version", name="uq_exam_version"),
@@ -20,6 +23,13 @@ class SeatingPlan(db.Model):
     examination = db.relationship("Examination", back_populates="seating_plans")
     creator = db.relationship("User")
     allocations = db.relationship("SeatingAllocation", back_populates="seating_plan", cascade="all, delete-orphan", lazy="select")
+
+    @property
+    def config_dict(self):
+        try:
+            return json.loads(self.config) if self.config else None
+        except ValueError:
+            return None
 
     def to_dict(self, include_allocations=False):
         allocated_count = len(self.allocations) if self.allocations else 0
@@ -40,6 +50,7 @@ class SeatingPlan(db.Model):
             "notes": self.notes,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "published_at": self.published_at.isoformat() if self.published_at else None,
+            "config": self.config_dict,
         }
         if include_allocations:
             data["allocations"] = [a.to_dict() for a in self.allocations]
@@ -89,6 +100,7 @@ class SeatingAllocation(db.Model):
             "seat_id": self.seat_id,
             "seat_label": self.seat.seat_label if self.seat else None,
             "row_num": self.seat.row_num if self.seat else None,
+            **(self.seat.bench_fields() if self.seat else {}),
             "seat_num": self.seat.seat_num if self.seat else None,
             "status": self.status,
             "notes": self.notes,

@@ -242,12 +242,12 @@ export default function HallManagementScreen() {
                   <View style={styles.benchRow}>
                     <View style={styles.benchCol}>
                       <Text style={styles.benchNum}>{hall.num_rows || hall.rows_count || 0}</Text>
-                      <Text style={styles.benchLabel}>Benches</Text>
+                      <Text style={styles.benchLabel}>Rows</Text>
                     </View>
                     <View style={styles.benchDivider} />
                     <View style={styles.benchCol}>
                       <Text style={styles.benchNum}>{hall.seats_per_row || hall.benches_per_row || 0}</Text>
-                      <Text style={styles.benchLabel}>Seats/Bench</Text>
+                      <Text style={styles.benchLabel}>Seats/Row</Text>
                     </View>
                     <View style={styles.benchDivider} />
                     <View style={styles.benchCol}>
@@ -312,7 +312,7 @@ export default function HallManagementScreen() {
           visible={showAddModal}
           onClose={() => setShowAddModal(false)}
           title="Add Examination Room"
-          subtitle="Configure bench rows and seating capacity"
+          subtitle="Configure rows of two-seat benches (L | R)"
           maxWidth={460}
         >
           <View style={styles.modalForm}>
@@ -344,7 +344,7 @@ export default function HallManagementScreen() {
 
             <View style={styles.modalRow}>
               <Input
-                label="Total Benches *"
+                label="Rows *"
                 placeholder="15"
                 value={benches}
                 onChangeText={setBenches}
@@ -352,7 +352,7 @@ export default function HallManagementScreen() {
                 style={{ flex: 1 }}
               />
               <Input
-                label="Seats per Bench *"
+                label="Seats per Row (2 per bench) *"
                 placeholder="2"
                 value={seatsPerBench}
                 onChangeText={setSeatsPerBench}
@@ -368,7 +368,7 @@ export default function HallManagementScreen() {
                   Room Capacity: <Text style={{ color: colors.successText, fontWeight: "700" }}>{calculatedCapacity} Seats</Text>
                 </Text>
                 <Text style={styles.calcSub}>
-                  {numBenches} benches × {numSeatsPerBench} seats per bench
+                  {numBenches} rows × {numSeatsPerBench} seats ({numBenches * Math.ceil(numSeatsPerBench / 2)} two-seat benches)
                 </Text>
               </View>
             </View>

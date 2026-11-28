@@ -12,12 +12,9 @@ from app.services.allocation_engine import AllocationEngine
 
 @pytest.fixture
 def app():
-    app = create_app()
-    app.config.update({
-        "TESTING": True,
-        "SQLALCHEMY_DATABASE_URI": "sqlite:///:memory:",
-        "JWT_SECRET_KEY": "test-secret-key-12345",
-    })
+    # TestConfig must be passed in: updating config after create_app() leaves the engine on the real DB
+    from config import TestConfig
+    app = create_app(TestConfig)
     with app.app_context():
         db.create_all()
         yield app
@@ -96,3 +93,4 @@ def test_hall_creation(app):
         assert hall.id is not None
         assert hall.capacity == 30
         assert hall.name == "LH-101"
+

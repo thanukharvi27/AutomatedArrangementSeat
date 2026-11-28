@@ -12,6 +12,9 @@ if __name__ == "__main__":
     with app.app_context():
         try:
             db.create_all()
+            from app.schema_upgrade import ensure_schema
+            for col in ensure_schema():
+                print(f"Schema upgrade: added column {col}")
         except Exception as e:
             print(f"Warning: Could not create tables directly ({e}).")
 

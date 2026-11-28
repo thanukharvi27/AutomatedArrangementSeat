@@ -35,7 +35,8 @@ class Hall(db.Model):
             "rows_count": self.num_rows,
             "seats_per_row": self.seats_per_row,
             "cols_count": self.seats_per_row,
-            "benches_per_row": self.seats_per_row,
+            "benches_per_row": (self.seats_per_row + 1) // 2,
+            "total_benches": self.num_rows * ((self.seats_per_row + 1) // 2),
             "total_generated_seats": len(self.seats) if self.seats else 0,
             "active_seats_count": len(active_seats),
             "status": self.status,
@@ -65,6 +66,31 @@ class Seat(db.Model):
     hall = db.relationship("Hall", back_populates="seats")
     allocations = db.relationship("SeatingAllocation", back_populates="seat", lazy="dynamic")
 
+    # Bench model: consecutive seats in a row pair into one bench (seat 1 = LEFT, seat 2 = RIGHT of bench 1).
+    @property
+    def bench_in_row(self):
+        return (self.seat_num + 1) // 2
+
+    @property
+    def position(self):
+        return "LEFT" if self.seat_num % 2 else "RIGHT"
+
+    @property
+    def partner_seat_num(self):
+        return self.seat_num + 1 if self.seat_num % 2 else self.seat_num - 1
+
+    @property
+    def bench_num(self):
+        per_row = (self.hall.seats_per_row + 1) // 2 if self.hall else 0
+        return (self.row_num - 1) * per_row + self.bench_in_row
+
+    def bench_fields(self):
+        return {
+            "bench_num": self.bench_num,
+            "bench_in_row": self.bench_in_row,
+            "position": self.position,
+        }
+
     def to_dict(self):
         return {
             "id": self.id,
@@ -74,4 +100,5 @@ class Seat(db.Model):
             "seat_num": self.seat_num,
             "seat_label": self.seat_label,
             "is_active": self.is_active,
+            **self.bench_fields(),
         }

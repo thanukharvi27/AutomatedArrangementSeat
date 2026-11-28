@@ -212,7 +212,8 @@ def seed_database():
 
         print("7. Generating and Publishing Seating Plans...")
         # Generate & publish DBMS seating
-        plan1 = AllocationEngine.generate_plan(exam_id=exam_dbms.id, hall_ids=[h1.id], user_id=admin.id, policy="INTERLEAVE")
+        # Each exam here is single-branch, so one student per bench: halls are sized by benches, not seats
+        plan1 = AllocationEngine.generate_plan(exam_id=exam_dbms.id, hall_ids=[h1.id, h2.id], user_id=admin.id, policy="INTERLEAVE")
         plan1.status = "PUBLISHED"
         plan1.published_at = datetime.utcnow()
         exam_dbms.status = "SEATING_PUBLISHED"
@@ -224,7 +225,7 @@ def seed_database():
         exam_dsp.status = "SEATING_PUBLISHED"
 
         # Generate DRAFT plan for Computer Networks (so admin can view & test publishing in UI)
-        plan3 = AllocationEngine.generate_plan(exam_id=exam_cn.id, hall_ids=[h3.id], user_id=admin.id, policy="INTERLEAVE")
+        plan3 = AllocationEngine.generate_plan(exam_id=exam_cn.id, hall_ids=[h3.id, h4.id], user_id=admin.id, policy="INTERLEAVE")
         plan3.status = "DRAFT"
         exam_cn.status = "SEATING_DRAFT"
 

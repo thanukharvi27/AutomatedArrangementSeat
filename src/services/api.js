@@ -274,8 +274,13 @@ export const hallApi = {
 export const seatingApi = {
   getPlans: () => api.get("/seating-plans"),
   generate: (payload) => api.post("/seating-plans/generate", payload),
+  // payload + dry_run: true -> allocation summary without saving
+  preview: (payload) => api.post("/seating-plans/generate", { ...payload, dry_run: true }),
+  getLayout: (examId) => api.get("/seating-plans/layout", { params: examId ? { exam_id: examId } : {} }),
   getPlan: (id) => api.get(`/seating-plans/${id}`),
   publish: (id) => api.post(`/seating-plans/${id}/publish`),
+  unpublish: (id) => api.post(`/seating-plans/${id}/unpublish`),
+  downloadPdf: (id) => api.get(`/seating-plans/${id}/pdf`, { responseType: "blob" }),
   reassign: (planId, allocId, targetSeatId, reason) =>
     api.patch(`/seating-plans/${planId}/allocations/${allocId}/reassign`, { target_seat_id: targetSeatId, reason }),
 };
